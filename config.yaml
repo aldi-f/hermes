@@ -1,0 +1,95 @@
+settings:
+  fingerprint_strategy: "auto"
+  deduplication_ttl: 300
+  metrics_port: 9090
+
+destinations:
+  - name: slack-oxygen
+    type: slack
+    webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+    template:
+      content: |
+        {
+          "blocks": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "{% if status == 'firing' %}🚨 Alert Firing{% else %}✅ Alert Resolved{% endif %}"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Group:*\n{{ group_name }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Status:*\n{{ status }}"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Labels:*\n{% for key, value in labels.items() %}`{{ key }}`: `{{ value }}`\n{% endfor %}"
+              }
+            },
+            {
+              "type": "section",
+              "text": {
+                "type": "mrkdwn",
+                "text": "*Annotations:*\n{% for key, value in annotations.items() %}`{{ key }}`: {{ value }}\n{% endfor %}"
+              }
+            }
+          ]
+        }
+
+  - name: discord-alerts
+    type: discord
+    webhook_url: "https://discord.com/api/webhooks/YOUR/WEBHOOK/URL"
+    template:
+      content: |
+        {
+          "embeds": [
+            {
+              "title": "{% if status == 'firing' %}🚨 Alert Firing{% else %}✅ Alert Resolved{% endif %}",
+              "color": 16711680 if status == 'firing' else 65280,
+              "fields": [
+                {"name": "Group", "value": "{{ group_name }}", "inline": true},
+                {"name": "Status", "value": "{{ status }}", "inline": true},
+                {"name": "Labels", "value": "{% for key, value in labels.items() %}`{{ key }}`: `{{ value }}`\n{% endfor %}"},
+                {"name": "Annotations", "value": "{% for key, value in annotations.items() %}{{ key }}: {{ value }}\n{% endfor %}"}
+              ]
+            }
+          ]
+        }
+
+groups:
+  - name: oxygen
+    destinations:
+      - slack-oxygen
+    match:
+      - type: label_equals
+        label: namespace
+        values: [dhc, oxygen]
+      - type: label_matches
+        label: container
+        pattern: "oxygen-.*"
+      - type: label_contains
+        label: queueName
+        substring: "oxygen"
+
+  - name: mercury
+    destinations:
+      - slack-oxygen
+    match:
+      - type: label_equals
+        label: namespace
+        values: [mercury]
+      - type: label_matches
+        label: namespace
+        pattern: "cdc-.*"

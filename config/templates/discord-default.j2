@@ -1,0 +1,54 @@
+{
+  "embeds": [
+    {
+      "title": "{% if status == 'firing' %}🚨 Alert Firing{% else %}✅ Alert Resolved{% endif %} - {{ group_name }}",
+      "color": {% if status == 'firing' %}16711680{% else %}65280{% endif %},
+      "fields": [
+        {
+          "name": "Status",
+          "value": "{{ status }}",
+          "inline": true
+        },
+        {
+          "name": "Destination",
+          "value": "{{ destination_name }}",
+          "inline": true
+        },
+        {
+          "name": "Fingerprint",
+          "value": "`{{ fingerprint }}`",
+          "inline": true
+        },
+        {
+          "name": "Started At",
+          "value": "{{ startsAt }}",
+          "inline": true
+        },
+        {% if endsAt %}
+        {
+          "name": "Ended At",
+          "value": "{{ endsAt }}",
+          "inline": true
+        },
+        {% endif %}
+        {
+          "name": "Labels",
+          "value": "{% for key, value in labels.items() %}`{{ key }}`: `{{ value }}`\n{% endfor %}",
+          "inline": false
+        },
+        {
+          "name": "Annotations",
+          "value": "{% for key, value in annotations.items() %}{{ key }}: {{ value }}\n{% endfor %}",
+          "inline": false
+        }
+      ],
+      {% if generatorURL %}
+      "url": "{{ generatorURL }}",
+      {% endif %}
+      "footer": {
+        "text": "Hermes Alert Router"
+      },
+      "timestamp": "{{ startsAt }}"
+    }
+  ]
+}

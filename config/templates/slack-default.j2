@@ -1,0 +1,65 @@
+{
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "{% if status == 'firing' %}🚨 Alert Firing{% else %}✅ Alert Resolved{% endif %}",
+        "emoji": true
+      }
+    },
+    {
+      "type": "section",
+      "fields": [
+        {
+          "type": "mrkdwn",
+          "text": "*Group:*\n{{ group_name }}"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Destination:*\n{{ destination_name }}"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Status:*\n{{ status }}"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Fingerprint:*\n`{{ fingerprint }}`"
+        }
+      ]
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Labels:*\n{% for key, value in labels.items() %}`{{ key }}`: `{{ value }}`\n{% endfor %}"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Annotations:*\n{% for key, value in annotations.items() %}{{ key }}: {{ value }}\n{% endfor %}"
+      }
+    },
+    {% if generatorURL %}
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "View in Prometheus"
+          },
+          "url": "{{ generatorURL }}"
+        }
+      ]
+    }
+    {% endif %}
+  ]
+}
