@@ -4,7 +4,7 @@ Hermes is an intermediary alert routing service that solves Alertmanager's limit
 
 ## Problem
 
-Alertmanager routes alerts using tree-based routing with AND logic. When an alert belongs to multiple teams (many-to-many relationship), you need OR logic, which Alertmanager doesn't support.
+Alertmanager routes alerts using tree-based routing with AND logic. When an alert belongs to multiple routes (many-to-many relationship), you need OR logic, which Alertmanager doesn't support.
 
 ## Solution
 
