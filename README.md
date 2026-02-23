@@ -189,10 +189,10 @@ kubectl apply -k k8s/kustomize/overlays/prod
 
 ```bash
 # Pull and install from OCI registry
-helm install hermes oci://ghcr.io/aldi-f/hermes:helm/v0.1.0-helm
+helm install hermes oci://ghcr.io/aldi-f/hermes/charts/hermes --version 0.1.0
 
 # Install with custom values
-helm install hermes oci://ghcr.io/aldi-f/hermes:helm/v0.1.0-helm \
+helm install hermes oci://ghcr.io/aldi-f/hermes/charts/hermes --version 0.1.0 \
   --set config.destinations[0].name=slack \
   --set config.destinations[0].type=slack \
   --set config.destinations[0].webhook_url=https://hooks.slack.com/services/xxx

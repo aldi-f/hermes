@@ -34,4 +34,4 @@ jobs:
 
       - name: Publish Helm chart as OCI artifact
         run: |
-          helm push k8s/chart/hermes-${{ steps.version.outputs.VERSION }}.tgz oci://ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-helm
+          helm push k8s/chart/hermes-${{ steps.version.outputs.VERSION }}.tgz oci://ghcr.io/${{ github.repository }}/charts
