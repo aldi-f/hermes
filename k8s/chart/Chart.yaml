@@ -1,0 +1,19 @@
+apiVersion: v2
+name: hermes
+description: Alertmanager routing & distribution system with OR matching and many-to-many alert routing
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - alertmanager
+  - alerting
+  - routing
+  - prometheus
+  - slack
+  - discord
+home: https://github.com/aldi-f/hermes
+sources:
+  - https://github.com/aldi-f/hermes
+maintainers:
+  - name: aldi-f
+    email: aldi-f@users.noreply.github.com

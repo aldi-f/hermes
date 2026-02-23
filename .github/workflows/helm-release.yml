@@ -1,0 +1,37 @@
+name: Publish Helm Chart
+
+on:
+  push:
+    tags:
+      - 'helm/v*'
+
+jobs:
+  publish-helm-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: 'v3.14.0'
+
+      - name: Log in to GHCR for Helm
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io --username ${{ github.actor }} --password-stdin
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/helm/v}" >> $GITHUB_OUTPUT
+
+      - name: Package Helm chart
+        run: |
+          cd k8s/chart
+          helm package . --version ${{ steps.version.outputs.VERSION }}
+
+      - name: Publish Helm chart as OCI artifact
+        run: |
+          helm push k8s/chart/hermes-${{ steps.version.outputs.VERSION }}.tgz oci://ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-helm

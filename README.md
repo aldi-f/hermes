@@ -118,8 +118,23 @@ docker run -p 8080:8080 -p 9090:9090 -v $(pwd)/config.yaml:/config/config.yaml h
 
 ## Kubernetes
 
+### Using Kustomize
+
 ```bash
-kubectl apply -k k8s/overlays/prod
+kubectl apply -k k8s/kustomize/overlays/prod
+```
+
+### Using Helm Chart
+
+```bash
+# Pull and install from OCI registry
+helm install hermes oci://ghcr.io/aldi-f/hermes:helm/v0.1.0-helm
+
+# Install with custom values
+helm install hermes oci://ghcr.io/aldi-f/hermes:helm/v0.1.0-helm \
+  --set config.destinations[0].name=slack \
+  --set config.destinations[0].type=slack \
+  --set config.destinations[0].webhook_url=https://hooks.slack.com/services/xxx
 ```
 
 Requires:
