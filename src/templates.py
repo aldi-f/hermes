@@ -4,7 +4,7 @@ from typing import Optional
 
 from jinja2 import BaseLoader, Environment, Template, TemplateNotFound
 
-from src.models import AlertContext, Destination, TemplateConfig
+from src.models import AlertContext, GroupedAlertContext, TemplateConfig
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,27 @@ class TemplateEngine:
             endsAt=context.endsAt,
             generatorURL=context.generatorURL,
             fingerprint=context.fingerprint,
+            group_name=context.group_name,
+            destination_name=context.destination_name,
+        )
+
+    def render_grouped(self, template_config: TemplateConfig, context: GroupedAlertContext) -> str:
+        if template_config.content:
+            template = Template(template_config.content)
+        elif template_config.path:
+            cache_key = template_config.path
+            if cache_key not in self._cache:
+                self._cache[cache_key] = self.env.get_template(template_config.path)
+            template = self._cache[cache_key]
+        else:
+            raise ValueError("Template must have either path or content")
+
+        return template.render(
+            alerts=context.alerts,
+            group_labels=context.group_labels,
+            common_labels=context.common_labels,
+            common_annotations=context.common_annotations,
+            status=context.status,
             group_name=context.group_name,
             destination_name=context.destination_name,
         )

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import signal
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -10,11 +9,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 
-from src.config import get_config, init_config, reload_config
+from src.config import init_config, reload_config
 from src.models import Config, FingerprintStrategy, WebhookPayload
 from src.state import StateManager
 from src.webhooks import AlertProcessor
-from src.metrics import get_metrics, init_metrics
+from src.metrics import init_metrics
 from src.persistence.redis_manager import RedisConnectionManager
 from src.persistence.sqlite_manager import SQLiteManager
 

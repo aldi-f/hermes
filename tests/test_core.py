@@ -1,7 +1,6 @@
 from datetime import datetime
 
 import pytest
-import pytest_asyncio
 
 from src.matcher import alert_matches_group, get_matching_groups, matches_rule
 from src.fingerprint import compute_fingerprint, get_fingerprint

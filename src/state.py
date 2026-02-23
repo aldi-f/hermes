@@ -4,7 +4,7 @@ import logging
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 from src.models import Alert, AlertState, Config
 from src.fingerprint import get_fingerprint

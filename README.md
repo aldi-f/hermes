@@ -41,6 +41,13 @@ destinations:
       content: |
         {"text": "Alert: {{ status }} - {{ group_name }}"}
 
+  - name: slack-grouped
+    type: slack
+    webhook_url: "https://hooks.slack.com/services/yyy"
+    template:
+      content: |
+        {"text": "*Alert:* `{{ alerts[0].labels.severity }}` - {{ group_labels.alertname }}\n*Cluster:* `{{ group_labels.cluster }}`\n*Messages:*\n{% for alert in alerts %}\n• {{ alert.annotations.description }}\n{% endfor %}"}
+
 groups:
   - name: oxygen-team
     destinations: [slack-alerts]
@@ -51,6 +58,14 @@ groups:
       - type: label_matches
         label: container
         pattern: "oxygen-.*"
+
+  - name: monitoring-team
+    destinations: [slack-grouped]
+    group_by: ["alertname", "cluster"]  # Group alerts by these labels
+    match:
+      - type: label_equals
+        label: cluster
+        values: [production, staging]
 ```
 
 ### Send Test Alert
@@ -93,7 +108,26 @@ curl -X POST http://localhost:8080/webhook \
 | `annotation_matches` | Annotation value matches regex pattern |
 | `always_match` | Always match (catch-all) |
 
+### Grouped Output
+
+By default, Hermes sends one message per alert. To send multiple alerts in a single message, configure `group_by` with the labels to group by:
+
+```yaml
+groups:
+  - name: oxygen-team
+    destinations: [slack-alerts]
+    group_by: ["alertname", "cluster"]  # Group alerts with same alertname and cluster
+    match:
+      - type: label_equals
+        label: namespace
+        values: [oxygen, dhc]
+```
+
+When `group_by` is configured, alerts with matching label values are combined into one message. For example, with `group_by: ["alertname", "cluster"]`, all alerts with the same alertname and cluster will be sent together. If `group_by` is not specified or empty, alerts are sent individually (default behavior).
+
 ### Template Variables
+
+#### Individual Alert Templates (default)
 
 Available in templates:
 
@@ -108,6 +142,33 @@ Available in templates:
 | `fingerprint` | Alert fingerprint |
 | `group_name` | Matching group name |
 | `destination_name` | Destination name |
+
+#### Grouped Alert Templates (when `group_by` is configured)
+
+Available in templates:
+
+| Variable | Description |
+|----------|-------------|
+| `alerts` | List of alert objects (iterate with `{% for alert in alerts %}`) |
+| `group_labels` | Labels used for grouping (as configured in `group_by`) |
+| `status` | `firing` or `resolved` |
+| `group_name` | Matching group name |
+| `destination_name` | Destination name |
+
+Within `alerts` iteration, each alert object has: `status`, `labels`, `annotations`, `startsAt`, `endsAt`, `generatorURL`, `fingerprint`.
+
+**Example grouped template:**
+
+```yaml
+template:
+  content: |
+    *Alert:* `{{ alerts[0].labels.severity }}` - {{ group_labels.alertname }}
+    *Cluster:* `{{ group_labels.cluster }}`
+    *Messages:*
+    {% for alert in alerts %}
+    • {{ alert.annotations.description }}
+    {% endfor %}
+```
 
 ## Docker
 

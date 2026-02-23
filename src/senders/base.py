@@ -1,11 +1,10 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
 
 import httpx
 
-from src.models import AlertContext, Destination, TemplateConfig
+from src.models import AlertContext, Destination, GroupedAlertContext
 from src.templates import TemplateEngine
 
 logger = logging.getLogger(__name__)
@@ -23,6 +22,17 @@ class BaseSender(ABC):
 
     async def send_async(self, context: AlertContext) -> bool:
         return await asyncio.to_thread(self.send, context)
+
+    async def send_grouped_async(self, context: GroupedAlertContext) -> bool:
+        return await asyncio.to_thread(self.send_grouped, context)
+
+    def send_grouped(self, context: GroupedAlertContext) -> bool:
+        try:
+            payload = self.template_engine.render_grouped(self.destination.template, context)
+            return self._do_send(payload)
+        except Exception as e:
+            logger.error(f"Failed to render/send grouped message: {e}")
+            return False
 
     def _do_send(self, payload: str) -> bool:
         for attempt in range(self.max_retries):
@@ -83,6 +93,14 @@ class SlackSender(BaseSender):
             logger.error(f"Failed to render/send Slack message: {e}")
             return False
 
+    async def send_grouped_async(self, context: GroupedAlertContext) -> bool:
+        try:
+            payload = self.template_engine.render_grouped(self.destination.template, context)
+            return await self._do_send_async(payload)
+        except Exception as e:
+            logger.error(f"Failed to render/send grouped Slack message: {e}")
+            return False
+
 
 class DiscordSender(BaseSender):
     def send(self, context: AlertContext) -> bool:
@@ -99,6 +117,14 @@ class DiscordSender(BaseSender):
             return await self._do_send_async(payload)
         except Exception as e:
             logger.error(f"Failed to render/send Discord message: {e}")
+            return False
+
+    async def send_grouped_async(self, context: GroupedAlertContext) -> bool:
+        try:
+            payload = self.template_engine.render_grouped(self.destination.template, context)
+            return await self._do_send_async(payload)
+        except Exception as e:
+            logger.error(f"Failed to render/send grouped Discord message: {e}")
             return False
 
 

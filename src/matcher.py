@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Dict, List
+from typing import List
 
 from src.models import Alert, Group, MatchRule, MatchType
 

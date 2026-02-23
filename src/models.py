@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -62,6 +62,7 @@ class Group(BaseModel):
     name: str
     destinations: list[str]
     match: list[MatchRule]
+    group_by: list[str] = Field(default_factory=list)
 
 
 class Config(BaseModel):
@@ -98,6 +99,14 @@ class AlertContext(BaseModel):
     endsAt: Optional[datetime]
     generatorURL: Optional[str]
     fingerprint: str
+    group_name: str
+    destination_name: str
+
+
+class GroupedAlertContext(BaseModel):
+    alerts: list[Alert]
+    group_labels: Dict[str, str] = Field(default_factory=dict)
+    status: str
     group_name: str
     destination_name: str
 
