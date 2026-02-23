@@ -3,7 +3,7 @@ name: Publish Helm Chart
 on:
   push:
     tags:
-      - 'helm/v*'
+      - 'helm/*'
 
 jobs:
   publish-helm-chart:
@@ -25,7 +25,7 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/helm/v}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF#refs/tags/helm/}" >> $GITHUB_OUTPUT
 
       - name: Package Helm chart
         run: |
