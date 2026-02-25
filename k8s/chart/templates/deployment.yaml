@@ -53,14 +53,10 @@ spec:
                   name: {{ include "hermes.fullname" . }}-secrets
                   key: redis-url
             {{- end }}
-            - name: SQLITE_PATH
-              value: "/data/hermes.db"
           volumeMounts:
             - name: config
               mountPath: /config
               readOnly: true
-            - name: data
-              mountPath: /data
           livenessProbe:
             httpGet:
               path: /health
@@ -79,8 +75,6 @@ spec:
         - name: config
           configMap:
             name: {{ include "hermes.fullname" . }}-config
-        - name: data
-          emptyDir: {}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

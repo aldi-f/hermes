@@ -9,7 +9,6 @@ from typing import Any, Dict, Optional
 from src.models import Alert, AlertState, Config
 from src.fingerprint import get_fingerprint
 from src.persistence.redis_manager import RedisConnectionManager
-from src.persistence.sqlite_manager import SQLiteManager
 
 logger = logging.getLogger(__name__)
 
@@ -55,14 +54,10 @@ class StateManager:
         self,
         config: Config,
         redis_manager: Optional[RedisConnectionManager] = None,
-        sqlite_manager: Optional[SQLiteManager] = None,
     ):
         self._config = config
         self._redis = redis_manager
-        self._sqlite = sqlite_manager
-        self._replay_queue = AlertReplayQueue(
-            max_size=config.settings.replay_queue_size
-        )
+        self._replay_queue = AlertReplayQueue(max_size=config.settings.replay_queue_size)
         self._replay_task: Optional[asyncio.Task] = None
         self._running = False
         self._local_cache: Dict[str, AlertState] = {}
@@ -120,7 +115,7 @@ class StateManager:
 
     async def _get_state(self, fingerprint: str, group_name: str) -> Optional[AlertState]:
         key = self._make_key(fingerprint, group_name)
-        
+
         if self._redis and await self._redis.circuit_breaker.can_execute():
             try:
                 data = await self._redis.client.get(key)
@@ -130,29 +125,17 @@ class StateManager:
             except Exception as e:
                 logger.error(f"Redis get failed: {e}")
                 await self._redis.circuit_breaker.record_failure()
-        
-        if self._sqlite:
-            try:
-                return await self._sqlite.get_state(fingerprint, group_name)
-            except Exception as e:
-                logger.error(f"SQLite get failed: {e}")
-        
+
         async with self._local_lock:
             return self._local_cache.get(key)
 
     async def _set_state(self, state: AlertState):
         key = self._make_key(state.fingerprint, state.group_name)
         ttl = self._config.settings.deduplication_ttl
-        
+
         async with self._local_lock:
             self._local_cache[key] = state
-        
-        if self._sqlite:
-            try:
-                await self._sqlite.set_state(state)
-            except Exception as e:
-                logger.error(f"SQLite set failed: {e}")
-        
+
         if self._redis:
             if await self._redis.circuit_breaker.can_execute():
                 try:
@@ -164,11 +147,11 @@ class StateManager:
                     logger.error(f"Redis set failed: {e}")
                     await self._redis.circuit_breaker.record_failure()
             else:
-                await self._replay_queue.enqueue(
-                    state.alert, state.group_name, state.fingerprint
-                )
+                await self._replay_queue.enqueue(state.alert, state.group_name, state.fingerprint)
 
-    async def _set_redis_state(self, fingerprint: str, group_name: str, alert: Alert, status: str = None):
+    async def _set_redis_state(
+        self, fingerprint: str, group_name: str, alert: Alert, status: str = None
+    ):
         state = AlertState(
             fingerprint=fingerprint,
             group_name=group_name,
@@ -181,9 +164,7 @@ class StateManager:
     async def should_send(
         self, alert: Alert, group_name: str, metrics: Optional[Any] = None
     ) -> bool:
-        fingerprint = get_fingerprint(
-            alert, self._config.settings.fingerprint_strategy, metrics
-        )
+        fingerprint = get_fingerprint(alert, self._config.settings.fingerprint_strategy, metrics)
 
         try:
             existing = await self._get_state(fingerprint, group_name)
@@ -236,13 +217,7 @@ class StateManager:
                 return len(keys)
             except Exception as e:
                 logger.error(f"Redis scan failed: {e}")
-        
-        if self._sqlite:
-            try:
-                return await self._sqlite.get_active_count(group_name)
-            except Exception as e:
-                logger.error(f"SQLite count failed: {e}")
-        
+
         async with self._local_lock:
             return sum(
                 1

@@ -36,14 +36,10 @@ spec:
                   name: hermes-secrets
                   key: redis-url
                   optional: true
-            - name: SQLITE_PATH
-              value: "/data/hermes.db"
           volumeMounts:
             - name: config
               mountPath: /config
               readOnly: true
-            - name: data
-              mountPath: /data
           livenessProbe:
             httpGet:
               path: /health
@@ -67,5 +63,3 @@ spec:
         - name: config
           configMap:
             name: hermes-config
-        - name: data
-          emptyDir: {}

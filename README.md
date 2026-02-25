@@ -177,6 +177,15 @@ docker build -t hermes:latest .
 docker run -p 8080:8080 -p 9090:9090 -v $(pwd)/config.yaml:/config/config.yaml hermes:latest
 ```
 
+For multi-replica deployments with Redis:
+
+```bash
+docker run -p 8080:8080 -p 9090:9090 \
+  -v $(pwd)/config.yaml:/config/config.yaml \
+  -e REDIS_URL=redis://redis:6379/0 \
+  hermes:latest
+```
+
 ## Kubernetes
 
 ### Using Kustomize
@@ -193,6 +202,16 @@ helm install hermes oci://ghcr.io/aldi-f/hermes/charts/hermes --version 0.1.0
 
 # Install with custom values
 helm install hermes oci://ghcr.io/aldi-f/hermes/charts/hermes --version 0.1.0 \
+  --set config.destinations[0].name=slack \
+  --set config.destinations[0].type=slack \
+  --set config.destinations[0].webhook_url=https://hooks.slack.com/services/xxx
+```
+
+For multi-replica deployments, enable Redis:
+
+```bash
+helm install hermes oci://ghcr.io/aldi-f/hermes/charts/hermes --version 0.1.0 \
+  --set redis.enabled=true \
   --set config.destinations[0].name=slack \
   --set config.destinations[0].type=slack \
   --set config.destinations[0].webhook_url=https://hooks.slack.com/services/xxx
@@ -217,6 +236,31 @@ Requires:
 | `CONFIG_PATH` | `config.yaml` | Path to config file |
 | `PORT` | `8080` | HTTP server port |
 | `ENABLE_WATCH` | `true` | Watch config file for changes |
+| `REDIS_URL` | None | Redis connection URL (optional, for multi-replica deduplication) |
+
+## Stateless Architecture
+
+Hermes is designed to be completely stateless. All state is kept in-memory with optional Redis for distributed deduplication:
+
+- **In-memory cache**: Primary state storage, persists only while Hermes is running
+- **Redis (optional)**: Enables distributed deduplication across multiple Hermes replicas
+- **No persistence**: Alert state is lost on restart
+
+### Trade-offs
+
+**Without Redis:**
+- ✅ No external dependencies
+- ✅ Simpler deployment
+- ⚠️ No cross-replica deduplication (may send duplicate alerts in multi-replica setups)
+- ⚠️ State is lost on restart (may resend "firing" alerts)
+
+**With Redis:**
+- ✅ Distributed deduplication across replicas
+- ✅ State persists across restarts (within TTL)
+- ⚠️ Additional dependency
+- ⚠️ Slightly increased latency
+
+For single-replica deployments, Redis is optional. For multi-replica production deployments, Redis is recommended to avoid duplicate notifications.
 
 ## Metrics
 

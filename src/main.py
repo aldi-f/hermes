@@ -15,11 +15,9 @@ from src.state import StateManager
 from src.webhooks import AlertProcessor
 from src.metrics import init_metrics
 from src.persistence.redis_manager import RedisConnectionManager
-from src.persistence.sqlite_manager import SQLiteManager
 
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -28,7 +26,6 @@ _state_manager: Optional[StateManager] = None
 _processor: Optional[AlertProcessor] = None
 _metrics = None
 _redis_manager: Optional[RedisConnectionManager] = None
-_sqlite_manager: Optional[SQLiteManager] = None
 _shutdown_event: Optional[asyncio.Event] = None
 
 
@@ -45,7 +42,7 @@ def _on_config_reload(new_config: Config):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _config, _state_manager, _processor, _metrics, _redis_manager, _sqlite_manager, _shutdown_event
+    global _config, _state_manager, _processor, _metrics, _redis_manager, _shutdown_event
 
     _shutdown_event = asyncio.Event()
     config_path = os.environ.get("CONFIG_PATH", "config.yaml")
@@ -68,14 +65,9 @@ async def lifespan(app: FastAPI):
             _metrics.redis_connected.set(0)
             logger.warning("Redis connection failed, using fallback mode")
 
-    sqlite_path = _config.settings.sqlite_path or os.environ.get("SQLITE_PATH", "/data/hermes.db")
-    _sqlite_manager = SQLiteManager(sqlite_path)
-    await _sqlite_manager.connect()
-
     _state_manager = StateManager(
         config=_config,
         redis_manager=_redis_manager,
-        sqlite_manager=_sqlite_manager,
     )
     await _state_manager.start()
 
@@ -94,16 +86,13 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Hermes...")
-    
+
     if _state_manager:
         await _state_manager.stop()
-    
-    if _sqlite_manager:
-        await _sqlite_manager.disconnect()
-    
+
     if _redis_manager:
         await _redis_manager.disconnect()
-    
+
     logger.info("Hermes stopped")
 
 
@@ -119,11 +108,15 @@ async def health():
     redis_healthy = False
     if _redis_manager:
         redis_healthy = await _redis_manager.is_healthy()
-    
+
     return {
         "status": "ok",
         "config_loaded": _config is not None,
-        "redis": "connected" if redis_healthy else "disconnected" if _redis_manager else "not_configured",
+        "redis": "connected"
+        if redis_healthy
+        else "disconnected"
+        if _redis_manager
+        else "not_configured",
         "queue_size": await _state_manager.get_queue_size() if _state_manager else 0,
     }
 
@@ -131,9 +124,14 @@ async def health():
 @app.get("/ready")
 async def ready():
     if _config is None:
-        return JSONResponse(status_code=503, content={"status": "not ready", "reason": "config not loaded"})
+        return JSONResponse(
+            status_code=503, content={"status": "not ready", "reason": "config not loaded"}
+        )
     if _state_manager is None:
-        return JSONResponse(status_code=503, content={"status": "not ready", "reason": "state manager not initialized"})
+        return JSONResponse(
+            status_code=503,
+            content={"status": "not ready", "reason": "state manager not initialized"},
+        )
     return {"status": "ready"}
 
 
@@ -154,23 +152,18 @@ async def webhook(request: Request):
 async def list_destinations():
     if not _config:
         return {"destinations": []}
-    return {
-        "destinations": [
-            {"name": d.name, "type": d.type}
-            for d in _config.destinations
-        ]
-    }
+    return {"destinations": [{"name": d.name, "type": d.type} for d in _config.destinations]}
 
 
 @app.get("/destinations/{name}/health")
 async def destination_health(name: str):
     if not _config:
         return JSONResponse(status_code=404, content={"error": "Config not loaded"})
-    
+
     dest = next((d for d in _config.destinations if d.name == name), None)
     if not dest:
         return JSONResponse(status_code=404, content={"error": "Destination not found"})
-    
+
     return {"name": name, "type": dest.type, "status": "configured"}
 
 
@@ -178,7 +171,7 @@ async def destination_health(name: str):
 async def get_state():
     if not _state_manager:
         return {"error": "State manager not initialized"}
-    
+
     return {
         "queue_size": await _state_manager.get_queue_size(),
     }
