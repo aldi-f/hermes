@@ -19,7 +19,6 @@ class Settings(BaseModel):
     redis_failure_threshold: int = 3
     redis_recovery_timeout: int = 60
     replay_queue_size: int = 1000
-    sqlite_path: str = "/data/hermes.db"
 
 
 class TemplateConfig(BaseModel):
