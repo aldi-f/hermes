@@ -1,12 +1,12 @@
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from src.models import Alert, AlertContext, Config, Group, GroupedAlertContext, WebhookPayload
-from src.matcher import get_matching_groups
-from src.state import StateManager
-from src.senders.base import create_sender, BaseSender
-from src.templates import TemplateEngine
 from src.fingerprint import get_fingerprint
+from src.matcher import get_matching_groups
+from src.models import Alert, AlertContext, Config, Group, GroupedAlertContext, WebhookPayload
+from src.senders.base import BaseSender, create_sender
+from src.state import StateManager
+from src.templates import TemplateEngine
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,44 @@ class AlertProcessor:
             value = alert.labels.get(label, "")
             key_parts.append(f"{label}={value}")
         return "|".join(key_parts)
+
+    def _compute_common_labels(self, alerts: List[Alert]) -> Dict[str, str]:
+        """Compute labels that are common to all alerts in the group."""
+        if not alerts:
+            return {}
+
+        # Start with all labels from the first alert
+        common = dict(alerts[0].labels)
+
+        # Intersect with labels from remaining alerts
+        for alert in alerts[1:]:
+            keys_to_remove = []
+            for key, value in common.items():
+                if key not in alert.labels or alert.labels[key] != value:
+                    keys_to_remove.append(key)
+            for key in keys_to_remove:
+                del common[key]
+
+        return common
+
+    def _compute_common_annotations(self, alerts: List[Alert]) -> Dict[str, str]:
+        """Compute annotations that are common to all alerts in the group."""
+        if not alerts:
+            return {}
+
+        # Start with all annotations from the first alert
+        common = dict(alerts[0].annotations)
+
+        # Intersect with annotations from remaining alerts
+        for alert in alerts[1:]:
+            keys_to_remove = []
+            for key, value in common.items():
+                if key not in alert.annotations or alert.annotations[key] != value:
+                    keys_to_remove.append(key)
+            for key in keys_to_remove:
+                del common[key]
+
+        return common
 
     async def process_webhook(self, payload: WebhookPayload, metrics) -> Dict[str, int]:
         results = {"received": 0, "matched": 0, "sent": 0, "deduplicated": 0}
@@ -85,10 +123,14 @@ class AlertProcessor:
                             continue
 
                         status = grouped_alerts[0].status if grouped_alerts else "firing"
+                        common_labels = self._compute_common_labels(grouped_alerts)
+                        common_annotations = self._compute_common_annotations(grouped_alerts)
 
                         context = GroupedAlertContext(
                             alerts=grouped_alerts,
                             group_labels=group_labels,
+                            common_labels=common_labels,
+                            common_annotations=common_annotations,
                             status=status,
                             group_name=group.name,
                             destination_name=dest_name,
@@ -98,13 +140,10 @@ class AlertProcessor:
                         status_outcome = "success" if success else "failure"
                         results["sent"] += 1 if success else 0
                         metrics.alerts_sent.labels(
-                            group=group.name,
-                            destination=dest_name,
-                            status=status_outcome
+                            group=group.name, destination=dest_name, status=status_outcome
                         ).inc()
                         metrics.send_attempts.labels(
-                            destination=dest_name,
-                            status=status_outcome
+                            destination=dest_name, status=status_outcome
                         ).inc()
             else:
                 for alert in alerts:
@@ -122,9 +161,7 @@ class AlertProcessor:
                             continue
 
                         fingerprint = get_fingerprint(
-                            alert,
-                            self._config.settings.fingerprint_strategy,
-                            metrics
+                            alert, self._config.settings.fingerprint_strategy, metrics
                         )
 
                         context = AlertContext(
@@ -143,13 +180,10 @@ class AlertProcessor:
                         status_outcome = "success" if success else "failure"
                         results["sent"] += 1 if success else 0
                         metrics.alerts_sent.labels(
-                            group=group.name,
-                            destination=dest_name,
-                            status=status_outcome
+                            group=group.name, destination=dest_name, status=status_outcome
                         ).inc()
                         metrics.send_attempts.labels(
-                            destination=dest_name,
-                            status=status_outcome
+                            destination=dest_name, status=status_outcome
                         ).inc()
 
         return results

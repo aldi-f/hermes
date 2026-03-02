@@ -20,10 +20,10 @@ install:
 	pip install -e ".[dev]"
 
 test:
-	pytest tests/ -v
+	PYTHONPATH=. pytest tests/ -v
 
 test-cov:
-	pytest tests/ -v --cov=src --cov-report=html --cov-report=term
+	PYTHONPATH=. pytest tests/ -v --cov=src --cov-report=html --cov-report=term
 
 lint:
 	ruff check src/ tests/

@@ -151,6 +151,8 @@ Available in templates:
 |----------|-------------|
 | `alerts` | List of alert objects (iterate with `{% for alert in alerts %}`) |
 | `group_labels` | Labels used for grouping (as configured in `group_by`) |
+| `common_labels` | Labels that are common to ALL alerts in the group (same key and value) |
+| `common_annotations` | Annotations that are common to ALL alerts in the group (same key and value) |
 | `status` | `firing` or `resolved` |
 | `group_name` | Matching group name |
 | `destination_name` | Destination name |
@@ -162,13 +164,15 @@ Within `alerts` iteration, each alert object has: `status`, `labels`, `annotatio
 ```yaml
 template:
   content: |
-    *Alert:* `{{ alerts[0].labels.severity }}` - {{ group_labels.alertname }}
-    *Cluster:* `{{ group_labels.cluster }}`
+    *Alert:* `{{ common_labels.severity }}` - {{ common_labels.alertname }}
+    *Cluster:* `{{ common_labels.cluster }}`
     *Messages:*
     {% for alert in alerts %}
     • {{ alert.annotations.description }}
     {% endfor %}
 ```
+
+**Note:** `common_labels` contains labels shared by ALL alerts in the group with identical values. For example, if all alerts have `severity=warning`, then `common_labels.severity` will be `warning`. Labels with different values across alerts (like `pod`) will not appear in `common_labels`.
 
 ## Docker
 

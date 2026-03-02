@@ -105,6 +105,8 @@ class AlertContext(BaseModel):
 class GroupedAlertContext(BaseModel):
     alerts: list[Alert]
     group_labels: Dict[str, str] = Field(default_factory=dict)
+    common_labels: Dict[str, str] = Field(default_factory=dict)
+    common_annotations: Dict[str, str] = Field(default_factory=dict)
     status: str
     group_name: str
     destination_name: str

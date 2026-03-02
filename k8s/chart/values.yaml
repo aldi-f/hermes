@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/aldi-f/hermes
   pullPolicy: IfNotPresent
-  tag: ""
+  tag: "" # If empty, defaults to the chart appVersion.
 
 imagePullSecrets: []
 nameOverride: ""
@@ -38,13 +38,13 @@ ingress:
           pathType: Prefix
   tls: []
 
-resources:
-  requests:
-    memory: "64Mi"
-    cpu: "50m"
-  limits:
-    memory: "256Mi"
-    cpu: "500m"
+resources: {}
+  # requests:
+  #   memory: "64Mi"
+  #   cpu: "50m"
+  # limits:
+  #   memory: "256Mi"
+  #   cpu: "500m"
 
 autoscaling:
   enabled: false
@@ -76,6 +76,6 @@ tolerations: []
 affinity: {}
 
 serviceMonitor:
-  enabled: true
+  enabled: false
   interval: 30s
   scrapeTimeout: 10s

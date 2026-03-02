@@ -2,21 +2,23 @@ from datetime import datetime
 
 import pytest
 
-from src.matcher import alert_matches_group, get_matching_groups, matches_rule
 from src.fingerprint import compute_fingerprint, get_fingerprint
-from src.state import StateManager
-from src.templates import TemplateEngine
+from src.matcher import alert_matches_group, get_matching_groups, matches_rule
 from src.models import (
     Alert,
     AlertContext,
     Config,
+    FingerprintStrategy,
     Group,
+    GroupedAlertContext,
     MatchRule,
     MatchType,
     Settings,
     TemplateConfig,
-    FingerprintStrategy,
 )
+from src.state import StateManager
+from src.templates import TemplateEngine
+from src.webhooks import AlertProcessor
 
 
 class TestMatcher:
@@ -339,3 +341,201 @@ class TestTemplateEngine:
         )
         result = engine.render(template_config, context)
         assert result == "Namespace: production, Severity: critical"
+
+    def test_render_grouped_with_common_labels(self):
+        engine = TemplateEngine()
+        template_config = TemplateConfig(
+            content="*Alert:* `{{ common_labels.severity }}` - {{ common_labels.alertname }}\n*Cluster:* `{{ common_labels.cluster }}`\n*Messages:*\n{% for alert in alerts %}\n• {{ alert.annotations.description }}\n{% endfor %}"
+        )
+        alerts = [
+            Alert(
+                status="firing",
+                labels={
+                    "alertname": "HighMemory",
+                    "severity": "warning",
+                    "cluster": "prod",
+                    "pod": "pod-1",
+                },
+                annotations={"description": "Pod pod-1 memory high"},
+                startsAt=datetime.now(),
+            ),
+            Alert(
+                status="firing",
+                labels={
+                    "alertname": "HighMemory",
+                    "severity": "warning",
+                    "cluster": "prod",
+                    "pod": "pod-2",
+                },
+                annotations={"description": "Pod pod-2 memory high"},
+                startsAt=datetime.now(),
+            ),
+        ]
+        context = GroupedAlertContext(
+            alerts=alerts,
+            group_labels={"alertname": "HighMemory", "cluster": "prod"},
+            common_labels={"alertname": "HighMemory", "severity": "warning", "cluster": "prod"},
+            common_annotations={},
+            status="firing",
+            group_name="test-group",
+            destination_name="slack",
+        )
+        result = engine.render_grouped(template_config, context)
+        assert "*Alert:* `warning` - HighMemory" in result
+        assert "*Cluster:* `prod`" in result
+        assert "• Pod pod-1 memory high" in result
+        assert "• Pod pod-2 memory high" in result
+
+    def test_render_grouped_iterate_alerts(self):
+        engine = TemplateEngine()
+        template_config = TemplateConfig(
+            content="{% for alert in alerts %}{{ alert.labels.pod }},{% endfor %}"
+        )
+        alerts = [
+            Alert(
+                status="firing",
+                labels={"pod": "pod-a"},
+                annotations={},
+                startsAt=datetime.now(),
+            ),
+            Alert(
+                status="firing",
+                labels={"pod": "pod-b"},
+                annotations={},
+                startsAt=datetime.now(),
+            ),
+            Alert(
+                status="firing",
+                labels={"pod": "pod-c"},
+                annotations={},
+                startsAt=datetime.now(),
+            ),
+        ]
+        context = GroupedAlertContext(
+            alerts=alerts,
+            group_labels={},
+            common_labels={},
+            common_annotations={},
+            status="firing",
+            group_name="test-group",
+            destination_name="slack",
+        )
+        result = engine.render_grouped(template_config, context)
+        assert result == "pod-a,pod-b,pod-c,"
+
+
+class TestCommonLabelsComputation:
+    def test_compute_common_labels_all_same(self):
+        config = Config(settings=Settings())
+        state_manager = StateManager(config)
+        processor = AlertProcessor(config, state_manager)
+
+        alerts = [
+            Alert(
+                status="firing",
+                labels={"alertname": "Test", "severity": "warning", "cluster": "prod"},
+                startsAt=datetime.now(),
+            ),
+            Alert(
+                status="firing",
+                labels={"alertname": "Test", "severity": "warning", "cluster": "prod"},
+                startsAt=datetime.now(),
+            ),
+        ]
+        common = processor._compute_common_labels(alerts)
+        assert common == {"alertname": "Test", "severity": "warning", "cluster": "prod"}
+
+    def test_compute_common_labels_partial_overlap(self):
+        config = Config(settings=Settings())
+        state_manager = StateManager(config)
+        processor = AlertProcessor(config, state_manager)
+
+        alerts = [
+            Alert(
+                status="firing",
+                labels={"alertname": "Test", "severity": "warning", "pod": "pod-1"},
+                startsAt=datetime.now(),
+            ),
+            Alert(
+                status="firing",
+                labels={"alertname": "Test", "severity": "warning", "pod": "pod-2"},
+                startsAt=datetime.now(),
+            ),
+        ]
+        common = processor._compute_common_labels(alerts)
+        assert common == {"alertname": "Test", "severity": "warning"}
+        assert "pod" not in common
+
+    def test_compute_common_labels_no_overlap(self):
+        config = Config(settings=Settings())
+        state_manager = StateManager(config)
+        processor = AlertProcessor(config, state_manager)
+
+        alerts = [
+            Alert(
+                status="firing",
+                labels={"foo": "bar"},
+                startsAt=datetime.now(),
+            ),
+            Alert(
+                status="firing",
+                labels={"baz": "qux"},
+                startsAt=datetime.now(),
+            ),
+        ]
+        common = processor._compute_common_labels(alerts)
+        assert common == {}
+
+    def test_compute_common_labels_empty_list(self):
+        config = Config(settings=Settings())
+        state_manager = StateManager(config)
+        processor = AlertProcessor(config, state_manager)
+
+        common = processor._compute_common_labels([])
+        assert common == {}
+
+    def test_compute_common_labels_single_alert(self):
+        config = Config(settings=Settings())
+        state_manager = StateManager(config)
+        processor = AlertProcessor(config, state_manager)
+
+        alerts = [
+            Alert(
+                status="firing",
+                labels={"alertname": "Test", "severity": "critical"},
+                startsAt=datetime.now(),
+            ),
+        ]
+        common = processor._compute_common_labels(alerts)
+        assert common == {"alertname": "Test", "severity": "critical"}
+
+    def test_compute_common_annotations_partial_overlap(self):
+        config = Config(settings=Settings())
+        state_manager = StateManager(config)
+        processor = AlertProcessor(config, state_manager)
+
+        alerts = [
+            Alert(
+                status="firing",
+                labels={},
+                annotations={"summary": "High memory", "description": "Pod pod-1 high"},
+                startsAt=datetime.now(),
+            ),
+            Alert(
+                status="firing",
+                labels={},
+                annotations={"summary": "High memory", "description": "Pod pod-2 high"},
+                startsAt=datetime.now(),
+            ),
+        ]
+        common = processor._compute_common_annotations(alerts)
+        assert common == {"summary": "High memory"}
+        assert "description" not in common
+
+    def test_compute_common_annotations_empty_list(self):
+        config = Config(settings=Settings())
+        state_manager = StateManager(config)
+        processor = AlertProcessor(config, state_manager)
+
+        common = processor._compute_common_annotations([])
+        assert common == {}
