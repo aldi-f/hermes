@@ -1,6 +1,8 @@
 import logging
+import os
+import re
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import yaml
 from watchdog.events import FileSystemEventHandler
@@ -9,6 +11,35 @@ from watchdog.observers import Observer
 from src.models import Config
 
 logger = logging.getLogger(__name__)
+
+
+def _expand_env_vars(data: Any) -> Any:
+    """Recursively expand ${VAR_NAME} patterns in strings.
+
+    Raises ValueError if referenced environment variable doesn't exist.
+    """
+    if isinstance(data, str):
+        pattern = r"\$\{([^}]+)\}"
+        matches = re.findall(pattern, data)
+        if not matches:
+            return data
+
+        result = data
+        for var_name in matches:
+            if var_name not in os.environ:
+                raise ValueError(
+                    f"Environment variable '{var_name}' not found (required by config)"
+                )
+            result = result.replace(f"${{{var_name}}}", os.environ[var_name])
+        return result
+
+    elif isinstance(data, dict):
+        return {k: _expand_env_vars(v) for k, v in data.items()}
+
+    elif isinstance(data, list):
+        return [_expand_env_vars(item) for item in data]
+
+    return data
 
 
 class ConfigLoader:
@@ -21,7 +52,8 @@ class ConfigLoader:
     def load(self) -> Config:
         with open(self.config_path) as f:
             data = yaml.safe_load(f)
-        config = Config(**data) if data else Config()
+        expanded_data = _expand_env_vars(data) if data else {}
+        config = Config(**expanded_data) if expanded_data else Config()
         self._config = config
         logger.info(f"Loaded config from {self.config_path}")
         return config
@@ -50,6 +82,7 @@ class ConfigLoader:
 
             def _reload(inner_self):
                 import threading
+
                 if inner_self._reloading:
                     return
                 inner_self._reloading = True
@@ -93,10 +126,10 @@ def init_config(
     global _config_loader
     _config_loader = ConfigLoader(config_path)
     config = _config_loader.load()
-    
+
     if enable_watch and on_reload:
         _config_loader.start_watching(on_reload)
-    
+
     return config
 
 

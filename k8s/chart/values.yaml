@@ -62,12 +62,22 @@ config:
 
   groups: []
 
-secrets:
-  redisUrl: ""
+# Environment variables from secrets/configMaps
+envFrom: []
+#  - secretRef:
+#      name: my-webhook-secrets
+#  - configMapRef:
+#      name: my-config
 
-  slackWebhooks: {}
-
-  discordWebhooks: {}
+# Additional environment variables
+env: []
+#  - name: SOME_VAR
+#    value: "value"
+#  - name: SECRET_VAR
+#    valueFrom:
+#      secretKeyRef:
+#        name: some-secret
+#        key: key-name
 
 nodeSelector: {}
 
@@ -79,3 +89,14 @@ serviceMonitor:
   enabled: false
   interval: 30s
   scrapeTimeout: 10s
+
+redis:
+  enabled: false
+  # Option 1: Use existing secret containing full REDIS_URL
+  existingSecret: ""
+  existingSecretKey: "redis-url"
+
+  # Option 2: Build from components (use existing secret with password if needed)
+  url: "redis-master"
+  port: 6379
+  database: 0

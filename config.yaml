@@ -6,7 +6,7 @@ settings:
 destinations:
   - name: slack-oxygen
     type: slack
-    webhook_url: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+    webhook_url: "${SLACK_WEBHOOK_URL}"
     template:
       content: |
         {
@@ -50,7 +50,7 @@ destinations:
 
   - name: discord-alerts
     type: discord
-    webhook_url: "https://discord.com/api/webhooks/YOUR/WEBHOOK/URL"
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
     template:
       content: |
         {

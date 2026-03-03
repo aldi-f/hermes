@@ -36,17 +36,17 @@ settings:
 destinations:
   - name: slack-alerts
     type: slack
-    webhook_url: "https://hooks.slack.com/services/xxx"
+    webhook_url: "${SLACK_WEBHOOK_URL}"
     template:
       content: |
         {"text": "Alert: {{ status }} - {{ group_name }}"}
 
   - name: slack-grouped
     type: slack
-    webhook_url: "https://hooks.slack.com/services/yyy"
+    webhook_url: "${SLACK_GROUPED_WEBHOOK_URL}"
     template:
       content: |
-        {"text": "*Alert:* `{{ alerts[0].labels.severity }}` - {{ group_labels.alertname }}\n*Cluster:* `{{ group_labels.cluster }}`\n*Messages:*\n{% for alert in alerts %}\n• {{ alert.annotations.description }}\n{% endfor %}"}
+        {"text": "*Alert:* `{{ alerts[0].labels.severity }}` - {{ group_labels.alertname }}\\n*Cluster:* `{{ group_labels.cluster }}`\\n*Messages:*\\n{% for alert in alerts %}\\n• {{ alert.annotations.description }}\\n{% endfor %}"}
 
 groups:
   - name: oxygen-team
@@ -192,12 +192,6 @@ docker run -p 8080:8080 -p 9090:9090 \
 
 ## Kubernetes
 
-### Using Kustomize
-
-```bash
-kubectl apply -k k8s/kustomize/overlays/prod
-```
-
 ### Using Helm Chart
 
 ```bash
@@ -241,6 +235,75 @@ Requires:
 | `PORT` | `8080` | HTTP server port |
 | `ENABLE_WATCH` | `true` | Watch config file for changes |
 | `REDIS_URL` | None | Redis connection URL (optional, for multi-replica deduplication) |
+
+### Using Environment Variables in Config
+
+Configuration values can reference environment variables using `${VAR_NAME}` syntax:
+
+```yaml
+destinations:
+  - name: slack-alerts
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+```
+
+If a referenced environment variable is not found, the application will fail to start with an error.
+
+### Kubernetes Deployment
+
+#### Using Helm
+
+```yaml
+# values.yaml
+redis:
+  enabled: true
+  url: "redis-redis-master"
+  port: 6379
+
+envFrom:
+  - secretRef:
+      name: webhook-secrets
+```
+
+```bash
+helm install hermes ./k8s/chart -f values.yaml
+```
+
+Or use an existing secret for Redis URL:
+
+```yaml
+redis:
+  enabled: true
+  existingSecret: "redis-secret"
+  existingSecretKey: "redis-url"
+```
+
+#### Using Kustomize
+
+Create a patch to inject environment variables:
+
+```yaml
+# deployment-patch.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes
+spec:
+  template:
+    spec:
+      containers:
+        - name: hermes
+          envFrom:
+            - secretRef:
+                name: webhook-secrets
+```
+
+Add to your kustomization:
+
+```yaml
+patches:
+  - path: deployment-patch.yaml
+```
 
 ## Stateless Architecture
 
