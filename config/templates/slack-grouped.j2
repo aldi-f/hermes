@@ -1,0 +1,48 @@
+{
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "{% if status == 'firing' %}🚨 Alert Firing{% else %}✅ Alert Resolved{% endif %}",
+        "emoji": true
+      }
+    },
+    {
+      "type": "section",
+      "fields": [
+        {
+          "type": "mrkdwn",
+          "text": "*Severity:*\n`{{ common_labels.severity | default('unknown') }}`"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Alert:*\n{{ common_labels.alertname | default('N/A') }}"
+        }
+      ]
+    },
+    {
+      "type": "section",
+      "fields": [
+        {
+          "type": "mrkdwn",
+          "text": "*Cluster:*\n`{{ common_labels.cluster | default('N/A') }}`"
+        },
+        {
+          "type": "mrkdwn",
+          "text": "*Group:*\n{{ group_name }}"
+        }
+      ]
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "*Messages:*\n{% for alert in alerts %}• {{ alert.annotations.description | default(alert.annotations.summary | default('No description')) }}\n{% endfor %}"
+      }
+    }
+  ]
+}
