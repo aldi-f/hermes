@@ -1,6 +1,6 @@
 [project]
 name = "hermes"
-version = "0.1.4"
+version = "0.1.5"
 description = "Alertmanager routing and distribution system"
 requires-python = ">=3.11"
 dependencies = [

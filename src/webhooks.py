@@ -76,7 +76,32 @@ class AlertProcessor:
     async def process_webhook(self, payload: WebhookPayload, metrics) -> Dict[str, int]:
         results = {"received": 0, "matched": 0, "sent": 0, "deduplicated": 0}
 
+        logger.debug(
+            "Webhook payload received",
+            extra={
+                "receiver": payload.receiver,
+                "status": payload.status,
+                "alert_count": len(payload.alerts),
+                "group_labels": payload.groupLabels,
+                "common_labels": payload.commonLabels,
+                "common_annotations": payload.commonAnnotations,
+                "external_url": payload.externalURL,
+            },
+        )
+
         for alert in payload.alerts:
+            logger.debug(
+                "Processing alert",
+                extra={
+                    "status": alert.status,
+                    "labels": alert.labels,
+                    "annotations": alert.annotations,
+                    "starts_at": alert.startsAt.isoformat() if alert.startsAt else None,
+                    "ends_at": alert.endsAt.isoformat() if alert.endsAt else None,
+                    "generator_url": alert.generatorURL,
+                    "fingerprint": alert.fingerprint,
+                },
+            )
             results["received"] += 1
             metrics.alerts_received.inc()
 

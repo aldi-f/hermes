@@ -10,14 +10,14 @@ from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 
 from src.config import init_config, reload_config
+from src.metrics import init_metrics
+from src.middleware.logging import setup_logging
 from src.models import Config, FingerprintStrategy, WebhookPayload
+from src.persistence.redis_manager import RedisConnectionManager
 from src.state import StateManager
 from src.webhooks import AlertProcessor
-from src.metrics import init_metrics
-from src.persistence.redis_manager import RedisConnectionManager
-from src.middleware.logging import setup_logging
 
-setup_logging(log_format="json", log_level="INFO")
+setup_logging(log_format="json")
 logger = logging.getLogger(__name__)
 
 _config: Optional[Config] = None
