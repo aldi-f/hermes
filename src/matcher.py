@@ -63,4 +63,14 @@ def get_matching_groups(alert: Alert, groups: List[Group]) -> List[Group]:
     for group in groups:
         if alert_matches_group(alert, group):
             matching.append(group)
+
+    if matching:
+        logger.debug(
+            "Alert matched groups",
+            extra={
+                "matched_group_names": [g.name for g in matching],
+                "total_groups_checked": len(groups),
+            },
+        )
+
     return matching

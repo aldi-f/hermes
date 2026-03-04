@@ -31,7 +31,14 @@ class BaseSender(ABC):
             payload = self.template_engine.render_grouped(self.destination.template, context)
             return self._do_send(payload)
         except Exception as e:
-            logger.error(f"Failed to render/send grouped message: {e}")
+            logger.error(
+                "Failed to render/send grouped message",
+                extra={
+                    "destination": self.destination.name,
+                    "destination_type": self.destination.type,
+                    "error": str(e),
+                },
+            )
             return False
 
     def _do_send(self, payload: str) -> bool:
@@ -41,17 +48,43 @@ class BaseSender(ABC):
                     response = client.post(
                         self.destination.webhook_url,
                         content=payload.encode(),
-                        headers={"Content-Type": "application/json"}
+                        headers={"Content-Type": "application/json"},
                     )
                     if response.status_code < 400:
+                        logger.info(
+                            "Successfully sent webhook",
+                            extra={
+                                "destination": self.destination.name,
+                                "destination_type": self.destination.type,
+                                "status_code": response.status_code,
+                                "attempt": attempt + 1,
+                            },
+                        )
                         return True
-                    logger.warning(f"Webhook returned {response.status_code}: {response.text}")
+                    logger.warning(
+                        "Webhook returned non-success status",
+                        extra={
+                            "destination": self.destination.name,
+                            "destination_type": self.destination.type,
+                            "status_code": response.status_code,
+                            "attempt": attempt + 1,
+                        },
+                    )
             except Exception as e:
-                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                logger.warning(
+                    "Send attempt failed",
+                    extra={
+                        "destination": self.destination.name,
+                        "destination_type": self.destination.type,
+                        "attempt": attempt + 1,
+                        "error": str(e),
+                    },
+                )
 
             if attempt < self.max_retries - 1:
                 import time
-                time.sleep(2 ** attempt)
+
+                time.sleep(2**attempt)
 
         return False
 
@@ -62,16 +95,41 @@ class BaseSender(ABC):
                     response = await client.post(
                         self.destination.webhook_url,
                         content=payload.encode(),
-                        headers={"Content-Type": "application/json"}
+                        headers={"Content-Type": "application/json"},
                     )
                     if response.status_code < 400:
+                        logger.info(
+                            "Successfully sent webhook (async)",
+                            extra={
+                                "destination": self.destination.name,
+                                "destination_type": self.destination.type,
+                                "status_code": response.status_code,
+                                "attempt": attempt + 1,
+                            },
+                        )
                         return True
-                    logger.warning(f"Webhook returned {response.status_code}: {response.text}")
+                    logger.warning(
+                        "Webhook returned non-success status (async)",
+                        extra={
+                            "destination": self.destination.name,
+                            "destination_type": self.destination.type,
+                            "status_code": response.status_code,
+                            "attempt": attempt + 1,
+                        },
+                    )
             except Exception as e:
-                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                logger.warning(
+                    "Send attempt failed (async)",
+                    extra={
+                        "destination": self.destination.name,
+                        "destination_type": self.destination.type,
+                        "attempt": attempt + 1,
+                        "error": str(e),
+                    },
+                )
 
             if attempt < self.max_retries - 1:
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2**attempt)
 
         return False
 
@@ -82,7 +140,14 @@ class SlackSender(BaseSender):
             payload = self.template_engine.render(self.destination.template, context)
             return self._do_send(payload)
         except Exception as e:
-            logger.error(f"Failed to render/send Slack message: {e}")
+            logger.error(
+                "Failed to render/send Slack message",
+                extra={
+                    "destination": self.destination.name,
+                    "destination_type": self.destination.type,
+                    "error": str(e),
+                },
+            )
             return False
 
     async def send_async(self, context: AlertContext) -> bool:
@@ -90,7 +155,14 @@ class SlackSender(BaseSender):
             payload = self.template_engine.render(self.destination.template, context)
             return await self._do_send_async(payload)
         except Exception as e:
-            logger.error(f"Failed to render/send Slack message: {e}")
+            logger.error(
+                "Failed to render/send Slack message (async)",
+                extra={
+                    "destination": self.destination.name,
+                    "destination_type": self.destination.type,
+                    "error": str(e),
+                },
+            )
             return False
 
     async def send_grouped_async(self, context: GroupedAlertContext) -> bool:
@@ -98,7 +170,14 @@ class SlackSender(BaseSender):
             payload = self.template_engine.render_grouped(self.destination.template, context)
             return await self._do_send_async(payload)
         except Exception as e:
-            logger.error(f"Failed to render/send grouped Slack message: {e}")
+            logger.error(
+                "Failed to render/send grouped Slack message (async)",
+                extra={
+                    "destination": self.destination.name,
+                    "destination_type": self.destination.type,
+                    "error": str(e),
+                },
+            )
             return False
 
 
@@ -108,7 +187,14 @@ class DiscordSender(BaseSender):
             payload = self.template_engine.render(self.destination.template, context)
             return self._do_send(payload)
         except Exception as e:
-            logger.error(f"Failed to render/send Discord message: {e}")
+            logger.error(
+                "Failed to render/send Discord message",
+                extra={
+                    "destination": self.destination.name,
+                    "destination_type": self.destination.type,
+                    "error": str(e),
+                },
+            )
             return False
 
     async def send_async(self, context: AlertContext) -> bool:
@@ -116,7 +202,14 @@ class DiscordSender(BaseSender):
             payload = self.template_engine.render(self.destination.template, context)
             return await self._do_send_async(payload)
         except Exception as e:
-            logger.error(f"Failed to render/send Discord message: {e}")
+            logger.error(
+                "Failed to render/send Discord message (async)",
+                extra={
+                    "destination": self.destination.name,
+                    "destination_type": self.destination.type,
+                    "error": str(e),
+                },
+            )
             return False
 
     async def send_grouped_async(self, context: GroupedAlertContext) -> bool:
@@ -124,7 +217,14 @@ class DiscordSender(BaseSender):
             payload = self.template_engine.render_grouped(self.destination.template, context)
             return await self._do_send_async(payload)
         except Exception as e:
-            logger.error(f"Failed to render/send grouped Discord message: {e}")
+            logger.error(
+                "Failed to render/send grouped Discord message (async)",
+                extra={
+                    "destination": self.destination.name,
+                    "destination_type": self.destination.type,
+                    "error": str(e),
+                },
+            )
             return False
 
 

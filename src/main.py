@@ -15,10 +15,9 @@ from src.state import StateManager
 from src.webhooks import AlertProcessor
 from src.metrics import init_metrics
 from src.persistence.redis_manager import RedisConnectionManager
+from src.middleware.logging import setup_logging
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+setup_logging(log_format="json", log_level="INFO")
 logger = logging.getLogger(__name__)
 
 _config: Optional[Config] = None
@@ -140,8 +139,17 @@ async def webhook(request: Request):
     try:
         body = await request.json()
         payload = WebhookPayload(**body)
+        logger.info(
+            "Webhook received",
+            extra={
+                "alert_count": len(payload.alerts),
+                "fingerprint_strategy": _config.settings.fingerprint_strategy.value
+                if _config
+                else "unknown",
+            },
+        )
     except Exception as e:
-        logger.error(f"Failed to parse webhook: {e}")
+        logger.error("Failed to parse webhook", extra={"error": str(e)})
         return JSONResponse(status_code=400, content={"error": "Invalid payload"})
 
     results = await _processor.process_webhook(payload, _metrics)
@@ -187,5 +195,6 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=port,
-        log_level="info",
+        log_level="warning",
+        access_log=False,
     )

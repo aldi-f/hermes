@@ -84,6 +84,15 @@ class AlertProcessor:
         for alert in payload.alerts:
             matching_groups = get_matching_groups(alert, self._config.groups)
 
+            if matching_groups:
+                logger.debug(
+                    "Alert matched groups",
+                    extra={
+                        "alert_fingerprint": alert.fingerprint,
+                        "matched_groups": [g.name for g in matching_groups],
+                    },
+                )
+
             if not matching_groups:
                 continue
 
@@ -99,6 +108,14 @@ class AlertProcessor:
             results["matched"] += len(alerts)
             metrics.alerts_matched.labels(group=group.name).inc(len(alerts))
 
+            logger.info(
+                "Processing group",
+                extra={
+                    "group_name": group_name,
+                    "alert_count": len(alerts),
+                },
+            )
+
             if group.group_by:
                 alert_groups: Dict[str, list[Alert]] = {}
                 for alert in alerts:
@@ -106,6 +123,15 @@ class AlertProcessor:
                     if key not in alert_groups:
                         alert_groups[key] = []
                     alert_groups[key].append(alert)
+
+                logger.debug(
+                    "Grouped alerts by labels",
+                    extra={
+                        "group_name": group_name,
+                        "grouping_labels": group.group_by,
+                        "unique_groups": len(alert_groups),
+                    },
+                )
 
                 for key, grouped_alerts in alert_groups.items():
                     active = await self._state_manager.get_active_count(group.name)
@@ -119,12 +145,26 @@ class AlertProcessor:
                     for dest_name in group.destinations:
                         sender = self._senders.get(dest_name)
                         if not sender:
-                            logger.warning(f"Unknown destination: {dest_name}")
+                            logger.warning(
+                                "Unknown destination",
+                                extra={"destination": dest_name, "group_name": group_name},
+                            )
                             continue
 
                         status = grouped_alerts[0].status if grouped_alerts else "firing"
                         common_labels = self._compute_common_labels(grouped_alerts)
                         common_annotations = self._compute_common_annotations(grouped_alerts)
+
+                        logger.debug(
+                            "Sending grouped alert",
+                            extra={
+                                "group_name": group_name,
+                                "destination": dest_name,
+                                "status": status,
+                                "alert_count": len(grouped_alerts),
+                                "grouping_key": key,
+                            },
+                        )
 
                         context = GroupedAlertContext(
                             alerts=grouped_alerts,
@@ -139,6 +179,15 @@ class AlertProcessor:
                         success = await sender.send_grouped_async(context)
                         status_outcome = "success" if success else "failure"
                         results["sent"] += 1 if success else 0
+                        logger.info(
+                            "Send result",
+                            extra={
+                                "destination": dest_name,
+                                "group_name": group_name,
+                                "status": status_outcome,
+                                "grouped": True,
+                            },
+                        )
                         metrics.alerts_sent.labels(
                             group=group.name, destination=dest_name, status=status_outcome
                         ).inc()
@@ -149,6 +198,13 @@ class AlertProcessor:
                 for alert in alerts:
                     if not await self._state_manager.should_send(alert, group.name, metrics):
                         results["deduplicated"] += 1
+                        logger.debug(
+                            "Alert deduplicated",
+                            extra={
+                                "group_name": group_name,
+                                "alert_fingerprint": alert.fingerprint,
+                            },
+                        )
                         continue
 
                     active = await self._state_manager.get_active_count(group.name)
@@ -157,11 +213,24 @@ class AlertProcessor:
                     for dest_name in group.destinations:
                         sender = self._senders.get(dest_name)
                         if not sender:
-                            logger.warning(f"Unknown destination: {dest_name}")
+                            logger.warning(
+                                "Unknown destination",
+                                extra={"destination": dest_name, "group_name": group_name},
+                            )
                             continue
 
                         fingerprint = get_fingerprint(
                             alert, self._config.settings.fingerprint_strategy, metrics
+                        )
+
+                        logger.debug(
+                            "Sending single alert",
+                            extra={
+                                "group_name": group_name,
+                                "destination": dest_name,
+                                "status": alert.status,
+                                "fingerprint": fingerprint,
+                            },
                         )
 
                         context = AlertContext(
@@ -179,6 +248,15 @@ class AlertProcessor:
                         success = await sender.send_async(context)
                         status_outcome = "success" if success else "failure"
                         results["sent"] += 1 if success else 0
+                        logger.info(
+                            "Send result",
+                            extra={
+                                "destination": dest_name,
+                                "group_name": group_name,
+                                "status": status_outcome,
+                                "grouped": False,
+                            },
+                        )
                         metrics.alerts_sent.labels(
                             group=group.name, destination=dest_name, status=status_outcome
                         ).inc()
