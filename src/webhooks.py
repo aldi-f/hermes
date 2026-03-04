@@ -167,6 +167,24 @@ class AlertProcessor:
                         if grouped_alerts:
                             group_labels[label] = grouped_alerts[0].labels.get(label, "")
 
+                    status = grouped_alerts[0].status if grouped_alerts else "firing"
+                    common_labels = self._compute_common_labels(grouped_alerts)
+                    common_annotations = self._compute_common_annotations(grouped_alerts)
+
+                    if not await self._state_manager.should_send_group(
+                        grouped_alerts, key, group.name
+                    ):
+                        results["deduplicated"] += len(grouped_alerts)
+                        logger.debug(
+                            "Group deduplicated",
+                            extra={
+                                "group_name": group_name,
+                                "grouping_key": key,
+                                "alert_count": len(grouped_alerts),
+                            },
+                        )
+                        continue
+
                     for dest_name in group.destinations:
                         sender = self._senders.get(dest_name)
                         if not sender:
@@ -175,10 +193,6 @@ class AlertProcessor:
                                 extra={"destination": dest_name, "group_name": group_name},
                             )
                             continue
-
-                        status = grouped_alerts[0].status if grouped_alerts else "firing"
-                        common_labels = self._compute_common_labels(grouped_alerts)
-                        common_annotations = self._compute_common_annotations(grouped_alerts)
 
                         logger.debug(
                             "Sending grouped alert",
@@ -235,6 +249,10 @@ class AlertProcessor:
                     active = await self._state_manager.get_active_count(group.name)
                     metrics.active_alerts.labels(group=group.name).set(active)
 
+                    fingerprint = get_fingerprint(
+                        alert, self._config.settings.fingerprint_strategy, metrics
+                    )
+
                     for dest_name in group.destinations:
                         sender = self._senders.get(dest_name)
                         if not sender:
@@ -243,10 +261,6 @@ class AlertProcessor:
                                 extra={"destination": dest_name, "group_name": group_name},
                             )
                             continue
-
-                        fingerprint = get_fingerprint(
-                            alert, self._config.settings.fingerprint_strategy, metrics
-                        )
 
                         logger.debug(
                             "Sending single alert",

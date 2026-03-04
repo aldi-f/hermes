@@ -225,6 +225,58 @@ class StateManager:
                 if s.group_name == group_name and s.status == "firing"
             )
 
+    async def should_send_group(
+        self, alerts: list[Alert], grouping_key: str, group_name: str
+    ) -> bool:
+        from src.fingerprint import get_fingerprint
+
+        group_fingerprint = f"group:{grouping_key}"
+
+        try:
+            existing = await self._get_state(group_fingerprint, group_name)
+
+            alert_fingerprints = [
+                get_fingerprint(alert, self._config.settings.fingerprint_strategy, None)
+                for alert in alerts
+            ]
+            sorted_fingerprints = sorted(alert_fingerprints)
+            alert_status = alerts[0].status if alerts else "unknown"
+
+            if existing is None:
+                state = AlertState(
+                    fingerprint=group_fingerprint,
+                    group_name=group_name,
+                    status=alert_status,
+                    last_seen=time.time(),
+                    alert=alerts[0] if alerts else None,
+                    metadata={"alert_fingerprints": sorted_fingerprints},
+                )
+                await self._set_state(state)
+                return True
+
+            existing_fingerprints = getattr(existing, "metadata", {}).get("alert_fingerprints", [])
+
+            if sorted_fingerprints != existing_fingerprints:
+                state = AlertState(
+                    fingerprint=group_fingerprint,
+                    group_name=group_name,
+                    status=alert_status,
+                    last_seen=time.time(),
+                    alert=alerts[0] if alerts else None,
+                    metadata={"alert_fingerprints": sorted_fingerprints},
+                )
+                await self._set_state(state)
+                return True
+
+            existing.last_seen = time.time()
+            existing.alert = alerts[0] if alerts else None
+            await self._set_state(existing)
+            return False
+
+        except Exception as e:
+            logger.error(f"Error in should_send_group: {e}")
+            return True
+
     async def get_queue_size(self) -> int:
         return await self._replay_queue.size()
 

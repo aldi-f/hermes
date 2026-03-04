@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -118,3 +118,4 @@ class AlertState(BaseModel):
     status: str
     last_seen: float
     alert: Optional[Alert] = None
+    metadata: Optional[Dict[str, Any]] = None
