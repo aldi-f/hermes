@@ -2,7 +2,7 @@ apiVersion: v2
 name: hermes
 description: Alertmanager routing & distribution system with OR matching and many-to-many alert routing
 type: application
-version: 0.1.8
+version: 0.1.9
 appVersion: "0.1.9"
 keywords:
   - alertmanager
