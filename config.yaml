@@ -48,6 +48,24 @@ destinations:
           ]
         }
 
+  # Example using legacy attachments format (alternative to block kit above)
+  # Uncomment to use this instead of the block kit format
+  # - name: slack-team-a-legacy
+  #   type: slack
+  #   webhook_url: "${SLACK_WEBHOOK_URL}"
+  #   attachments_template:
+  #     content: |
+  #       [
+  #         {
+  #           "color": "danger" if status == 'firing' else "good",
+  #           "fields": [
+  #             {"title": "Group", "value": "{{ group_name }}", "short": true},
+  #             {"title": "Status", "value": "{{ status }}", "short": true}
+  #           ],
+  #           "text": "*Labels:*\n{% for key, value in labels.items() %}`{{ key }}`: `{{ value }}`\n{% endfor %}\n\n*Annotations:*\n{% for key, value in annotations.items() %}`{{ key }}`: {{ value }}\n{% endfor %}"
+  #         }
+  #       ]
+
   - name: discord-alerts
     type: discord
     webhook_url: "${DISCORD_WEBHOOK_URL}"
@@ -75,13 +93,13 @@ groups:
     match:
       - type: label_equals
         label: namespace
-        values: [dhc, team-a]
+        values: [namespace-a, namespace-c]
       - type: label_matches
         label: container
-        pattern: "team-a-.*"
+        pattern: "container-a-.*"
       - type: label_contains
         label: queueName
-        substring: "team-a"
+        substring: "queue-a"
 
   - name: team-b
     destinations:
@@ -89,7 +107,7 @@ groups:
     match:
       - type: label_equals
         label: namespace
-        values: [team-b]
+        values: [namespace-b]
       - type: label_matches
         label: namespace
-        pattern: "cdc-.*"
+        pattern: "pattern-.*"

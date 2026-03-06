@@ -297,7 +297,8 @@ Available context:
 |----------|---------|-------------|
 | `CONFIG_PATH` | `config.yaml` | Path to config file |
 | `PORT` | `8080` | HTTP server port |
-| `ENABLE_WATCH` | `true` | Enable config hot reload |
+| `ENABLE_RELOAD_CHECK` | `true` | Enable periodic config reload checks |
+| `CONFIG_RELOAD_INTERVAL` | `30` | Config reload check interval in seconds |
 | `REDIS_URL` | None | Redis connection URL (optional) |
 | `LOG_FORMAT` | `text` | Log format (text/json) |
 | `LOG_LEVEL` | `INFO` | Log level |
@@ -312,20 +313,28 @@ settings:
   replay_queue_size: 1000
 
 destinations:
-  - name: slack-alerts
+  - name: slack-blockkit
     type: slack
     webhook_url: "${SLACK_WEBHOOK_URL}"
     template:
-      path: "/config/templates/slack-default.j2"
+      content: '{"blocks": [...]}'
+
+  - name: slack-legacy
+    type: slack
+    webhook_url: "${SLACK_LEGACY_WEBHOOK_URL}"
+    attachments_template:
+      content: '[{"color": "...", "fields": [...]}]'
 
 groups:
   - name: team-a
-    destinations: [slack-alerts]
+    destinations: [slack-blockkit]
     match:
       - type: label_equals
         label: namespace
         values: [team-a]
 ```
+
+**Note:** Only one of `template` or `attachments_template` can be specified for Slack destinations.
 
 ## Metrics
 

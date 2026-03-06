@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from prometheus_client import make_asgi_app
 
-from src.config import init_config, reload_config
+from src.config import init_config, reload_config, start_config_reload, stop_config_reload
 from src.metrics import init_metrics
 from src.middleware.logging import setup_logging
 from src.models import Config, FingerprintStrategy, WebhookPayload
@@ -45,10 +45,14 @@ async def lifespan(app: FastAPI):
 
     _shutdown_event = asyncio.Event()
     config_path = os.environ.get("CONFIG_PATH", "config.yaml")
-    enable_watch = os.environ.get("ENABLE_WATCH", "true").lower() == "true"
+    enable_reload = os.environ.get("ENABLE_RELOAD_CHECK", "true").lower() == "true"
+    reload_interval = int(os.environ.get("CONFIG_RELOAD_INTERVAL", "30"))
 
     _metrics = init_metrics()
-    _config = init_config(config_path, enable_watch, _on_config_reload)
+    _config = init_config(config_path, reload_interval)
+
+    if enable_reload:
+        await start_config_reload(_on_config_reload)
 
     redis_url = _config.settings.redis_url or os.environ.get("REDIS_URL")
     if redis_url:
@@ -85,6 +89,9 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down Hermes...")
+
+    if _config:
+        await stop_config_reload()
 
     if _state_manager:
         await _state_manager.stop()

@@ -1,3 +1,5 @@
+import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -5,8 +7,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 import yaml
-from watchdog.events import FileSystemEventHandler
-from watchdog.observers import Observer
 
 from src.models import Config
 
@@ -43,11 +43,14 @@ def _expand_env_vars(data: Any) -> Any:
 
 
 class ConfigLoader:
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, checksum_interval: int = 30):
         self.config_path = Path(config_path)
         self._config: Optional[Config] = None
-        self._observer: Optional[Observer] = None
+        self._checksum_interval = checksum_interval
         self._reload_callback: Optional[Callable[[Config], None]] = None
+        self._last_checksum: Optional[str] = None
+        self._reload_task: Optional[asyncio.Task] = None
+        self._stop_event: Optional[asyncio.Event] = None
 
     def load(self) -> Config:
         with open(self.config_path) as f:
@@ -58,61 +61,57 @@ class ConfigLoader:
         logger.info(f"Loaded config from {self.config_path}")
         return config
 
+    def _compute_checksum(self) -> str:
+        """Compute SHA-256 checksum of the config file."""
+        with open(self.config_path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+
     @property
     def config(self) -> Config:
         if self._config is None:
             return self.load()
         return self._config
 
-    def start_watching(self, on_reload: Callable[[Config], None]):
+    async def start_periodic_check(self, on_reload: Callable[[Config], None]):
         self._reload_callback = on_reload
+        self._stop_event = asyncio.Event()
+        self._last_checksum = self._compute_checksum()
 
-        class ConfigFileHandler(FileSystemEventHandler):
-            def __init__(inner_self, loader: ConfigLoader):
-                inner_self.loader = loader
-                inner_self._reloading = False
+        async def _periodic_check():
+            while not self._stop_event.is_set():
+                try:
+                    await asyncio.sleep(self._checksum_interval)
+                    if self._stop_event.is_set():
+                        break
 
-            def on_modified(inner_self, event):
-                if event.src_path == str(inner_self.loader.config_path):
-                    inner_self._reload()
+                    current_checksum = self._compute_checksum()
+                    if current_checksum != self._last_checksum:
+                        logger.info("Config file changed, reloading...")
+                        try:
+                            new_config = self.load()
+                            if self._reload_callback:
+                                self._reload_callback(new_config)
+                            self._last_checksum = current_checksum
+                        except Exception as e:
+                            logger.error(f"Failed to reload config: {e}")
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Error in periodic config check: {e}")
 
-            def on_created(inner_self, event):
-                if event.src_path == str(inner_self.loader.config_path):
-                    inner_self._reload()
+        self._reload_task = asyncio.create_task(_periodic_check())
+        logger.info(f"Started periodic config reload check (interval: {self._checksum_interval}s)")
 
-            def _reload(inner_self):
-                import threading
-
-                if inner_self._reloading:
-                    return
-                inner_self._reloading = True
-
-                def do_reload():
-                    try:
-                        new_config = inner_self.loader.load()
-                        if inner_self.loader._reload_callback:
-                            inner_self.loader._reload_callback(new_config)
-                    except Exception as e:
-                        logger.error(f"Failed to reload config: {e}")
-                    finally:
-                        inner_self._reloading = False
-
-                threading.Timer(1.0, do_reload).start()
-
-        self._observer = Observer()
-        self._observer.schedule(
-            ConfigFileHandler(self),
-            str(self.config_path.parent),
-            recursive=False,
-        )
-        self._observer.start()
-        logger.info(f"Started watching {self.config_path}")
-
-    def stop_watching(self):
-        if self._observer:
-            self._observer.stop()
-            self._observer.join()
-            logger.info("Stopped watching config file")
+    async def stop_periodic_check(self):
+        if self._stop_event:
+            self._stop_event.set()
+        if self._reload_task:
+            self._reload_task.cancel()
+            try:
+                await self._reload_task
+            except asyncio.CancelledError:
+                pass
+        logger.info("Stopped periodic config reload check")
 
 
 _config_loader: Optional[ConfigLoader] = None
@@ -120,17 +119,25 @@ _config_loader: Optional[ConfigLoader] = None
 
 def init_config(
     config_path: str,
-    enable_watch: bool = True,
+    checksum_interval: int = 30,
     on_reload: Optional[Callable[[Config], None]] = None,
 ) -> Config:
     global _config_loader
-    _config_loader = ConfigLoader(config_path)
+    _config_loader = ConfigLoader(config_path, checksum_interval)
     config = _config_loader.load()
-
-    if enable_watch and on_reload:
-        _config_loader.start_watching(on_reload)
-
     return config
+
+
+async def start_config_reload(on_reload: Callable[[Config], None]):
+    global _config_loader
+    if _config_loader and on_reload:
+        await _config_loader.start_periodic_check(on_reload)
+
+
+async def stop_config_reload():
+    global _config_loader
+    if _config_loader:
+        await _config_loader.stop_periodic_check()
 
 
 def get_config() -> Config:

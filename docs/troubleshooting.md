@@ -121,14 +121,22 @@ curl http://hermes:9090/metrics | grep config_reload
 **Solutions:**
 
 1. **Validation failed:**
-   - Check logs for validation errors
-   - Ensure YAML syntax is correct
+    - Check logs for validation errors
+    - Ensure YAML syntax is correct
 
-2. **Hot reload disabled:**
-   ```bash
-   # Check ENABLE_WATCH env var
-   kubectl describe deployment hermes | grep ENABLE_WATCH
-   ```
+2. **Reload check disabled:**
+    ```bash
+    # Check ENABLE_RELOAD_CHECK env var
+    kubectl describe deployment hermes | grep ENABLE_RELOAD_CHECK
+    ```
+
+3. **Reload check disabled:**
+    - Check if `ENABLE_RELOAD_CHECK=false`
+    - Set to `true` to enable periodic checks
+
+4. **Interval too long:**
+    - Reduce `CONFIG_RELOAD_INTERVAL` for faster reloads (default: 30s)
+    - Example: `CONFIG_RELOAD_INTERVAL=10` checks every 10 seconds
 
 ### 6. High Memory Usage
 

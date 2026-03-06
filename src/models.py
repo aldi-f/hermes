@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class FingerprintStrategy(str, Enum):
@@ -30,7 +30,35 @@ class Destination(BaseModel):
     name: str
     type: str
     webhook_url: str
-    template: TemplateConfig
+    template: TemplateConfig = Field(default_factory=TemplateConfig)
+    attachments_template: Optional[TemplateConfig] = None
+
+    @model_validator(mode="after")
+    def validate_template_exclusivity(self):
+        if self.type.lower() == "slack":
+            has_template = self.template.content is not None or self.template.path is not None
+            has_attachments = self.attachments_template is not None and (
+                self.attachments_template.content is not None
+                or self.attachments_template.path is not None
+            )
+
+            if has_template and has_attachments:
+                raise ValueError(
+                    f"Slack destination '{self.name}' cannot have both 'template' and 'attachments_template'. "
+                    "Specify only one."
+                )
+
+            if not has_template and not has_attachments:
+                raise ValueError(
+                    f"Slack destination '{self.name}' must have either 'template' or 'attachments_template'."
+                )
+        else:
+            if self.attachments_template is not None:
+                raise ValueError(
+                    f"Destination type '{self.type}' does not support 'attachments_template'. Only Slack supports this field."
+                )
+
+        return self
 
 
 class MatchType(str, Enum):

@@ -2,6 +2,7 @@ import os
 import pytest
 
 from src.config import _expand_env_vars
+from src.models import Destination, TemplateConfig
 
 
 class TestEnvVarExpansion:
@@ -62,3 +63,65 @@ class TestEnvVarExpansion:
 
         assert result["settings"]["redis_url"] == "redis://localhost:6379"
         assert result["destinations"][0]["webhook_url"] == "https://slack.webhook"
+
+
+class TestSlackTemplateValidation:
+    def test_slack_with_template_only_valid(self):
+        destination = Destination(
+            name="test-slack",
+            type="slack",
+            webhook_url="https://hooks.slack.com/test",
+            template=TemplateConfig(content='{"blocks": []}'),
+        )
+        assert destination.name == "test-slack"
+
+    def test_slack_with_attachments_only_valid(self):
+        destination = Destination(
+            name="test-slack",
+            type="slack",
+            webhook_url="https://hooks.slack.com/test",
+            template=TemplateConfig(),
+            attachments_template=TemplateConfig(content='[{"color": "danger"}]'),
+        )
+        assert destination.name == "test-slack"
+
+    def test_slack_with_both_templates_invalid(self):
+        with pytest.raises(ValueError) as exc:
+            Destination(
+                name="test-slack",
+                type="slack",
+                webhook_url="https://hooks.slack.com/test",
+                template=TemplateConfig(content='{"blocks": []}'),
+                attachments_template=TemplateConfig(content='[{"color": "danger"}]'),
+            )
+        assert "cannot have both" in str(exc.value).lower()
+
+    def test_slack_with_neither_template_invalid(self):
+        with pytest.raises(ValueError) as exc:
+            Destination(
+                name="test-slack",
+                type="slack",
+                webhook_url="https://hooks.slack.com/test",
+                template=TemplateConfig(),
+            )
+        assert "must have either" in str(exc.value).lower()
+
+    def test_non_slack_with_attachments_invalid(self):
+        with pytest.raises(ValueError) as exc:
+            Destination(
+                name="test-discord",
+                type="discord",
+                webhook_url="https://discord.webhook/test",
+                template=TemplateConfig(content='{"embeds": []}'),
+                attachments_template=TemplateConfig(content='[{"color": "danger"}]'),
+            )
+        assert "does not support 'attachments_template'" in str(exc.value).lower()
+
+    def test_non_slack_with_template_only_valid(self):
+        destination = Destination(
+            name="test-discord",
+            type="discord",
+            webhook_url="https://discord.webhook/test",
+            template=TemplateConfig(content='{"embeds": []}'),
+        )
+        assert destination.name == "test-discord"

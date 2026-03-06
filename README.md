@@ -85,6 +85,23 @@ curl -X POST http://localhost:8080/webhook \
 
 ## Configuration
 
+### Config Reload
+
+Hermes periodically checks for configuration changes using file checksums:
+
+| Environment Variable | Default | Description |
+|---------------------|---------|-------------|
+| `ENABLE_RELOAD_CHECK` | `true` | Enable periodic config reload checks |
+| `CONFIG_RELOAD_INTERVAL` | `30` | Check interval in seconds |
+
+When enabled, Hermes:
+1. Computes SHA-256 checksum of config file
+2. Compares with previously cached checksum
+3. If different: reloads configuration (validates and applies)
+4. Updates cached checksum
+
+This provides efficient config reloading without file system watching overhead.
+
 ### Settings
 
 | Option | Type | Default | Description |
@@ -107,6 +124,34 @@ curl -X POST http://localhost:8080/webhook \
 | `annotation_contains` | Annotation value contains substring |
 | `annotation_matches` | Annotation value matches regex pattern |
 | `always_match` | Always match (catch-all) |
+
+### Slack Templates
+
+Slack destinations support two message formats (choose one):
+
+**Block Kit Format (Recommended):**
+```yaml
+destinations:
+  - name: slack-alerts
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    template:
+      content: |
+        {"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "*Alert:* {{ status }}"}}]}
+```
+
+**Legacy Attachments Format:**
+```yaml
+destinations:
+  - name: slack-alerts
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    attachments_template:
+      content: |
+        [{"color": "danger" if status == 'firing' else "good", "fields": [...]}]
+```
+
+**Note:** Only one format can be specified per destination. Specifying both will cause a configuration error.
 
 ### Grouped Output
 
@@ -233,7 +278,8 @@ Requires:
 |----------|---------|-------------|
 | `CONFIG_PATH` | `config.yaml` | Path to config file |
 | `PORT` | `8080` | HTTP server port |
-| `ENABLE_WATCH` | `true` | Watch config file for changes |
+| `ENABLE_RELOAD_CHECK` | `true` | Enable periodic config reload checks |
+| `CONFIG_RELOAD_INTERVAL` | `30` | Config reload check interval in seconds |
 | `REDIS_URL` | None | Redis connection URL (optional, for multi-replica deduplication) |
 
 ### Using Environment Variables in Config

@@ -115,6 +115,7 @@ class BaseSender(ABC):
                             "destination_type": self.destination.type,
                             "status_code": response.status_code,
                             "attempt": attempt + 1,
+                            "text": response.text,
                         },
                     )
             except Exception as e:
@@ -137,7 +138,12 @@ class BaseSender(ABC):
 class SlackSender(BaseSender):
     def send(self, context: AlertContext) -> bool:
         try:
-            payload = self.template_engine.render(self.destination.template, context)
+            if self.destination.attachments_template:
+                payload = self.template_engine.render(
+                    self.destination.attachments_template, context
+                )
+            else:
+                payload = self.template_engine.render(self.destination.template, context)
             return self._do_send(payload)
         except Exception as e:
             logger.error(
@@ -152,7 +158,12 @@ class SlackSender(BaseSender):
 
     async def send_async(self, context: AlertContext) -> bool:
         try:
-            payload = self.template_engine.render(self.destination.template, context)
+            if self.destination.attachments_template:
+                payload = self.template_engine.render(
+                    self.destination.attachments_template, context
+                )
+            else:
+                payload = self.template_engine.render(self.destination.template, context)
             return await self._do_send_async(payload)
         except Exception as e:
             logger.error(
@@ -167,7 +178,12 @@ class SlackSender(BaseSender):
 
     async def send_grouped_async(self, context: GroupedAlertContext) -> bool:
         try:
-            payload = self.template_engine.render_grouped(self.destination.template, context)
+            if self.destination.attachments_template:
+                payload = self.template_engine.render_grouped(
+                    self.destination.attachments_template, context
+                )
+            else:
+                payload = self.template_engine.render_grouped(self.destination.template, context)
             return await self._do_send_async(payload)
         except Exception as e:
             logger.error(
