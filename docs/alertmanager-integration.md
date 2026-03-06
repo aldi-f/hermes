@@ -65,12 +65,12 @@ Alertmanager sends the following payload to Hermes:
       "status": "firing",
       "labels": {
         "alertname": "HighMemoryUsage",
-        "namespace": "oxygen",
+        "namespace": "namespace-a",
         "severity": "critical"
       },
       "annotations": {
         "summary": "Memory usage above 90%",
-        "description": "Pod oxygen-api has memory usage at 95%"
+        "description": "Pod `pod-a` has memory usage at 95%"
       },
       "startsAt": "2024-01-15T10:30:00Z",
       "endsAt": null,
@@ -101,7 +101,7 @@ curl -X POST http://localhost:8080/webhook \
       "status": "firing",
       "labels": {
         "alertname": "TestAlert",
-        "namespace": "oxygen"
+        "namespace": "namespace-a"
       },
       "annotations": {
         "summary": "Test alert from curl"
@@ -116,7 +116,7 @@ curl -X POST http://localhost:8080/webhook \
 ```bash
 amtool alert add \
   alertname=TestAlert \
-  namespace=oxygen \
+  namespace=namespace-a \
   severity=warning \
   --annotation=summary="Test alert" \
   --alertmanager.url=http://localhost:9093

@@ -41,10 +41,10 @@ Core processing logic:
 Rule matching with OR logic:
 
 ```
-Group "oxygen":
-  namespace == "oxygen" OR namespace == "dhc"
-  OR container =~ "oxygen-.*"
-  OR queueName contains "oxygen"
+Group "team-a":
+  namespace == "namespace-a" OR namespace == "namespace-b"
+  OR container =~ "container-a-.*"
+  OR queueName contains "queue-a"
 ```
 
 Supported match types:

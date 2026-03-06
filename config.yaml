@@ -4,7 +4,7 @@ settings:
   metrics_port: 9090
 
 destinations:
-  - name: slack-oxygen
+  - name: slack-team-a
     type: slack
     webhook_url: "${SLACK_WEBHOOK_URL}"
     template:
@@ -69,27 +69,27 @@ destinations:
         }
 
 groups:
-  - name: oxygen
+  - name: team-a
     destinations:
-      - slack-oxygen
+      - slack-team-a
     match:
       - type: label_equals
         label: namespace
-        values: [dhc, oxygen]
+        values: [dhc, team-a]
       - type: label_matches
         label: container
-        pattern: "oxygen-.*"
+        pattern: "team-a-.*"
       - type: label_contains
         label: queueName
-        substring: "oxygen"
+        substring: "team-a"
 
-  - name: mercury
+  - name: team-b
     destinations:
-      - slack-oxygen
+      - slack-team-a
     match:
       - type: label_equals
         label: namespace
-        values: [mercury]
+        values: [team-b]
       - type: label_matches
         label: namespace
         pattern: "cdc-.*"

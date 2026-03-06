@@ -25,65 +25,65 @@ class TestMatcher:
     def test_label_equals_match(self):
         alert = Alert(
             status="firing",
-            labels={"namespace": "oxygen"},
+            labels={"namespace": "team-a"},
             startsAt=datetime.now(),
         )
         rule = MatchRule(
             type=MatchType.LABEL_EQUALS,
             label="namespace",
-            values=["oxygen", "dhc"],
+            values=["team-a", "dhc"],
         )
         assert matches_rule(alert, rule) is True
 
     def test_label_equals_no_match(self):
         alert = Alert(
             status="firing",
-            labels={"namespace": "mercury"},
+            labels={"namespace": "team-b"},
             startsAt=datetime.now(),
         )
         rule = MatchRule(
             type=MatchType.LABEL_EQUALS,
             label="namespace",
-            values=["oxygen", "dhc"],
+            values=["team-a", "dhc"],
         )
         assert matches_rule(alert, rule) is False
 
     def test_label_contains_match(self):
         alert = Alert(
             status="firing",
-            labels={"queueName": "oxygen-queue-abc"},
+            labels={"queueName": "team-a-queue-abc"},
             startsAt=datetime.now(),
         )
         rule = MatchRule(
             type=MatchType.LABEL_CONTAINS,
             label="queueName",
-            substring="oxygen",
+            substring="team-a",
         )
         assert matches_rule(alert, rule) is True
 
     def test_label_contains_no_match(self):
         alert = Alert(
             status="firing",
-            labels={"queueName": "mercury-queue"},
+            labels={"queueName": "team-b-queue"},
             startsAt=datetime.now(),
         )
         rule = MatchRule(
             type=MatchType.LABEL_CONTAINS,
             label="queueName",
-            substring="oxygen",
+            substring="team-a",
         )
         assert matches_rule(alert, rule) is False
 
     def test_label_matches_regex(self):
         alert = Alert(
             status="firing",
-            labels={"container": "oxygen-exporter"},
+            labels={"container": "team-a-exporter"},
             startsAt=datetime.now(),
         )
         rule = MatchRule(
             type=MatchType.LABEL_MATCHES,
             label="container",
-            pattern=r"^oxygen-.*$",
+            pattern=r"^team-a-.*$",
         )
         assert matches_rule(alert, rule) is True
 
@@ -125,22 +125,22 @@ class TestMatcher:
     def test_alert_matches_group_or_logic(self):
         alert = Alert(
             status="firing",
-            labels={"namespace": "oxygen"},
+            labels={"namespace": "namespace-a"},
             startsAt=datetime.now(),
         )
         group = Group(
-            name="oxygen",
-            destinations=["slack-oxygen"],
+            name="team-a",
+            destinations=["slack-team-a"],
             match=[
                 MatchRule(
                     type=MatchType.LABEL_EQUALS,
                     label="namespace",
-                    values=["oxygen"],
+                    values=["namespace-a"],
                 ),
                 MatchRule(
                     type=MatchType.LABEL_EQUALS,
                     label="namespace",
-                    values=["mercury"],
+                    values=["namespace-b"],
                 ),
             ],
         )
@@ -149,36 +149,36 @@ class TestMatcher:
     def test_get_matching_groups(self):
         alert = Alert(
             status="firing",
-            labels={"namespace": "oxygen"},
+            labels={"namespace": "namespace-a"},
             startsAt=datetime.now(),
         )
         groups = [
             Group(
-                name="oxygen",
-                destinations=["slack-oxygen"],
+                name="team-a",
+                destinations=["slack-team-a"],
                 match=[
                     MatchRule(
                         type=MatchType.LABEL_EQUALS,
                         label="namespace",
-                        values=["oxygen"],
+                        values=["namespace-a"],
                     )
                 ],
             ),
             Group(
-                name="mercury",
-                destinations=["slack-mercury"],
+                name="team-b",
+                destinations=["slack-team-b"],
                 match=[
                     MatchRule(
                         type=MatchType.LABEL_EQUALS,
                         label="namespace",
-                        values=["mercury"],
+                        values=["namespace-b"],
                     )
                 ],
             ),
         ]
         matching = get_matching_groups(alert, groups)
         assert len(matching) == 1
-        assert matching[0].name == "oxygen"
+        assert matching[0].name == "team-a"
 
 
 class TestFingerprint:

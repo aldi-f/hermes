@@ -49,15 +49,15 @@ destinations:
         {"text": "*Alert:* `{{ alerts[0].labels.severity }}` - {{ group_labels.alertname }}\\n*Cluster:* `{{ group_labels.cluster }}`\\n*Messages:*\\n{% for alert in alerts %}\\n• {{ alert.annotations.description }}\\n{% endfor %}"}
 
 groups:
-  - name: oxygen-team
+  - name: team-a-team
     destinations: [slack-alerts]
     match:
       - type: label_equals
         label: namespace
-        values: [oxygen, dhc]
+        values: [team-a, dhc]
       - type: label_matches
         label: container
-        pattern: "oxygen-.*"
+        pattern: "team-a-.*"
 
   - name: monitoring-team
     destinations: [slack-grouped]
@@ -76,7 +76,7 @@ curl -X POST http://localhost:8080/webhook \
   -d '{
     "alerts": [{
       "status": "firing",
-      "labels": {"namespace": "oxygen", "alertname": "HighMemory"},
+      "labels": {"namespace": "team-a", "alertname": "HighMemory"},
       "annotations": {"summary": "Memory usage high"},
       "startsAt": "2024-01-01T00:00:00Z"
     }]
@@ -114,13 +114,13 @@ By default, Hermes sends one message per alert. To send multiple alerts in a sin
 
 ```yaml
 groups:
-  - name: oxygen-team
+  - name: team-a-team
     destinations: [slack-alerts]
     group_by: ["alertname", "cluster"]  # Group alerts with same alertname and cluster
     match:
       - type: label_equals
         label: namespace
-        values: [oxygen, dhc]
+        values: [team-a, dhc]
 ```
 
 When `group_by` is configured, alerts with matching label values are combined into one message. For example, with `group_by: ["alertname", "cluster"]`, all alerts with the same alertname and cluster will be sent together. If `group_by` is not specified or empty, alerts are sent individually (default behavior).
