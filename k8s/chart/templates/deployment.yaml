@@ -39,14 +39,16 @@ spec:
             - name: metrics
               containerPort: 9090
               protocol: TCP
-          env:
-            - name: CONFIG_PATH
-              value: "/config/config.yaml"
-            - name: PORT
-              value: "8080"
-            - name: ENABLE_WATCH
-              value: "true"
-            {{- if .Values.redis.enabled }}
+           env:
+             - name: CONFIG_PATH
+               value: "/config/config.yaml"
+             - name: PORT
+               value: "8080"
+             - name: ENABLE_RELOAD_CHECK
+               value: {{ .Values.configReload.enabled | quote }}
+             - name: CONFIG_RELOAD_INTERVAL
+               value: {{ .Values.configReload.interval | quote }}
+             {{- if .Values.redis.enabled }}
             - name: REDIS_URL
               {{- if .Values.redis.existingSecret }}
               valueFrom:

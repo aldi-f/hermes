@@ -62,6 +62,11 @@ config:
 
   groups: []
 
+# Config reload settings
+configReload:
+  enabled: true
+  interval: 30  # seconds
+
 # Environment variables from secrets/configMaps
 envFrom: []
 #  - secretRef:
