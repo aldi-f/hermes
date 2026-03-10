@@ -86,6 +86,18 @@ destinations:
           ]
         }
 
+  - name: stdout-debug
+    type: stdout
+    template:
+      content: |
+        {% if status == 'firing' %}🚨 Alert Firing{% else %}✅ Alert Resolved{% endif %}
+        Group: {{ group_name }}
+        Status: {{ status }}
+        {% for key, value in labels.items() %}{{ key }}: {{ value }}
+        {% endfor %}
+        {% for key, value in annotations.items() %}{{ key }}: {{ value }}
+        {% endfor %}
+
 groups:
   - name: team-a
     destinations:

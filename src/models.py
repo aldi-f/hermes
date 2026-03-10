@@ -29,7 +29,7 @@ class TemplateConfig(BaseModel):
 class Destination(BaseModel):
     name: str
     type: str
-    webhook_url: str
+    webhook_url: Optional[str] = None
     template: TemplateConfig = Field(default_factory=TemplateConfig)
     attachments_template: Optional[TemplateConfig] = None
 
@@ -51,6 +51,12 @@ class Destination(BaseModel):
             if not has_template and not has_attachments:
                 raise ValueError(
                     f"Slack destination '{self.name}' must have either 'template' or 'attachments_template'."
+                )
+        elif self.type.lower() == "stdout":
+            has_template = self.template.content is not None or self.template.path is not None
+            if not has_template:
+                raise ValueError(
+                    f"Stdout destination '{self.name}' must have 'template' configured."
                 )
         else:
             if self.attachments_template is not None:

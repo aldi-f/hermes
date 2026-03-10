@@ -4,7 +4,8 @@ from typing import Any, Dict, List
 from src.fingerprint import get_fingerprint
 from src.matcher import get_matching_groups
 from src.models import Alert, AlertContext, Config, Group, GroupedAlertContext, WebhookPayload
-from src.senders.base import BaseSender, create_sender
+from src.senders.base_sender import BaseSender
+from src.senders.factory import create_sender
 from src.state import StateManager
 from src.templates import TemplateEngine
 
