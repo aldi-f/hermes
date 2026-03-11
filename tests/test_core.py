@@ -593,19 +593,19 @@ async def test_should_send_group_with_deduplication_window():
     )
 
     result1 = await state_mgr.should_send_group(
-        [alert1, alert2], "alertname=TestAlert", "test-group"
+        [alert1, alert2], "alertname=TestAlert", "test-group", deduplication_window=0
     )
     assert result1 is True
 
     result2 = await state_mgr.should_send_group(
-        [alert1, alert2], "alertname=TestAlert", "test-group"
+        [alert1, alert2], "alertname=TestAlert", "test-group", deduplication_window=0
     )
     assert result2 is False
 
     time.sleep(2)
 
     result3 = await state_mgr.should_send_group(
-        [alert1, alert2], "alertname=TestAlert", "test-group"
+        [alert1, alert2], "alertname=TestAlert", "test-group", deduplication_window=0
     )
     assert result3 is False
 
