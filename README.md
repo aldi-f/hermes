@@ -170,6 +170,38 @@ groups:
 
 When `group_by` is configured, alerts with matching label values are combined into one message. For example, with `group_by: ["alertname", "cluster"]`, all alerts with the same alertname and cluster will be sent together. If `group_by` is not specified or empty, alerts are sent individually (default behavior).
 
+### Deduplication Window
+
+Control how often to resend deduplicated alerts using `deduplication_window`:
+
+```yaml
+groups:
+  - name: critical-alerts
+    destinations: [slack]
+    match:
+      - type: label_equals
+        label: severity
+        values: [critical]
+    group_by: [alertname]
+    deduplication_window: 3600  # Resend every hour
+
+  - name: info-alerts
+    destinations: [slack]
+    match:
+      - type: label_equals
+        label: severity
+        values: [info]
+    group_by: [alertname]
+    deduplication_window: 0  # Never resend (default)
+```
+
+| Value | Behavior |
+|-------|----------|
+| `0` | Never resend deduplicated alerts (default) |
+| `> 0` | Resend every N seconds while alert is firing |
+
+Use higher values for critical alerts to ensure visibility, and `0` for non-urgent alerts to avoid noise.
+
 ### Template Variables
 
 #### Individual Alert Templates (default)
