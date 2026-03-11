@@ -96,6 +96,15 @@ class Group(BaseModel):
     destinations: list[str]
     match: list[MatchRule]
     group_by: list[str] = Field(default_factory=list)
+    deduplication_window: int = 0
+
+    @model_validator(mode="after")
+    def validate_deduplication_window(self):
+        if self.deduplication_window < 0:
+            raise ValueError(
+                f"Group '{self.name}' deduplication_window must be >= 0, got {self.deduplication_window}"
+            )
+        return self
 
 
 class Config(BaseModel):

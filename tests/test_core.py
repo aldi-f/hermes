@@ -539,3 +539,31 @@ class TestCommonLabelsComputation:
 
         common = processor._compute_common_annotations([])
         assert common == {}
+
+
+def test_group_model_with_deduplication_window():
+    from src.models import Group, MatchRule, MatchType
+
+    group = Group(
+        name="test-group",
+        destinations=["slack"],
+        match=[MatchRule(type=MatchType.ALWAYS_MATCH)],
+        group_by=["alertname"],
+        deduplication_window=3600,
+    )
+
+    assert group.deduplication_window == 3600
+    assert group.name == "test-group"
+
+
+def test_group_deduplication_window_negative_raises_error():
+    from src.models import Group, MatchRule, MatchType
+    import pytest
+
+    with pytest.raises(ValueError, match="deduplication_window must be >= 0"):
+        Group(
+            name="test-group",
+            destinations=["slack"],
+            match=[MatchRule(type=MatchType.ALWAYS_MATCH)],
+            deduplication_window=-1,
+        )
