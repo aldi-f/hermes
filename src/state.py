@@ -226,7 +226,7 @@ class StateManager:
             )
 
     async def should_send_group(
-        self, alerts: list[Alert], grouping_key: str, group_name: str
+        self, alerts: list[Alert], grouping_key: str, group_name: str, deduplication_window: int = 0
     ) -> bool:
         from src.fingerprint import get_fingerprint
 
@@ -267,6 +267,20 @@ class StateManager:
                 )
                 await self._set_state(state)
                 return True
+
+            if deduplication_window > 0:
+                time_since_last = time.time() - existing.last_seen
+                if time_since_last >= deduplication_window:
+                    state = AlertState(
+                        fingerprint=group_fingerprint,
+                        group_name=group_name,
+                        status=alert_status,
+                        last_seen=time.time(),
+                        alert=alerts[0] if alerts else None,
+                        metadata={"alert_fingerprints": sorted_fingerprints},
+                    )
+                    await self._set_state(state)
+                    return True
 
             existing.last_seen = time.time()
             existing.alert = alerts[0] if alerts else None

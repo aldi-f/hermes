@@ -173,7 +173,7 @@ class AlertProcessor:
                     common_annotations = self._compute_common_annotations(grouped_alerts)
 
                     if not await self._state_manager.should_send_group(
-                        grouped_alerts, key, group.name
+                        grouped_alerts, key, group.name, group.deduplication_window
                     ):
                         results["deduplicated"] += len(grouped_alerts)
                         logger.debug(
