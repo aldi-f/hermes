@@ -1,0 +1,342 @@
+# Multi-Team Configuration Example
+# This config demonstrates production-like multi-team alert routing
+# Shows many-to-many routing, multiple destinations, and grouped alerts
+
+settings:
+  fingerprint_strategy: "auto"
+  deduplication_ttl: 300
+  metrics_port: 9090
+  # Redis for multi-replica deduplication (optional but recommended)
+  # redis_url: "redis://redis:6379/0"  # Or use REDIS_URL env var
+
+# Destinations - Configure webhooks for each team/service
+destinations:
+  # Team A Slack
+  - name: slack-team-a
+    type: slack
+    webhook_url: "${SLACK_TEAM_A_WEBHOOK_URL}"
+    template:
+      content: |
+        {"blocks": [
+          {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "{{ '🚨 ' if status == 'firing' else '✅ ' }}{{ labels.alertname }}"}
+          },
+          {
+            "type": "section",
+            "fields": [
+              {"type": "mrkdwn", "text": "*Severity:* {{ labels.severity | upper }}"},
+              {"type": "mrkdwn", "text": "*Namespace:* {{ labels.namespace }}"},
+              {"type": "mrkdwn", "text": "*Cluster:* {{ labels.cluster | default('unknown') }}"}
+            ]
+          },
+          {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "{{ annotations.summary }}\n{{ annotations.description | default('') }}"}}
+          }
+        ]}
+
+  # Team B Slack
+  - name: slack-team-b
+    type: slack
+    webhook_url: "${SLACK_TEAM_B_WEBHOOK_URL}"
+    template:
+      content: |
+        {"blocks": [
+          {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "{{ '🚨 ' if status == 'firing' else '✅ ' }}{{ labels.alertname }}"}
+          },
+          {
+            "type": "section",
+            "fields": [
+              {"type": "mrkdwn", "text": "*Severity:* {{ labels.severity | upper }}"},
+              {"type": "mrkdwn", "text": "*Namespace:* {{ labels.namespace }}"},
+              {"type": "mrkdwn", "text": "*Cluster:* {{ labels.cluster | default('unknown') }}"}
+            ]
+          },
+          {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "{{ annotations.summary }}"}}
+          }
+        ]}
+
+  # Database Team Slack
+  - name: slack-db-team
+    type: slack
+    webhook_url: "${SLACK_DB_TEAM_WEBHOOK_URL}"
+    template:
+      content: |
+        {"blocks": [
+          {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "{{ '🚨 ' if status == 'firing' else '✅ ' }}{{ labels.alertname }}"}
+          },
+          {
+            "type": "section",
+            "fields": [
+              {"type": "mrkdwn", "text": "*Database:* {{ labels.database_name | default('unknown') }}"},
+              {"type": "mrkdwn", "text": "*Severity:* {{ labels.severity | upper }}"},
+              {"type": "mrkdwn", "text": "*Cluster:* {{ labels.cluster | default('unknown') }}"}
+            ]
+          },
+          {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "{{ annotations.summary }}"}}
+          }
+        ]}
+
+  # On-call Discord (for critical alerts)
+  - name: discord-oncall
+    type: discord
+    webhook_url: "${DISCORD_ONCALL_WEBHOOK_URL}"
+    template:
+      content: |
+        {
+          "content": "{% if status == 'firing' %}🚨 {% elif status == 'resolved' %}✅ {% endif %}{{ labels.alertname }}",
+          "embeds": [{
+            "title": "{{ labels.alertname }}",
+            "description": "{{ annotations.summary }}",
+            "color": 16711680 if status == 'firing' else 65280,
+            "fields": [
+              {"name": "Severity", "value": "{{ labels.severity | upper }}"},
+              {"name": "Namespace", "value": "{{ labels.namespace }}"},
+              {"name": "Cluster", "value": "{{ labels.cluster | default('unknown') }}"},
+              {"name": "Status", "value": "{{ status | upper }}"}
+            ],
+            "timestamp": "{{ startsAt }}"
+          }]
+        }
+
+  # Ops Team Slack (production awareness)
+  - name: slack-ops-team
+    type: slack
+    webhook_url: "${SLACK_OPS_WEBHOOK_URL}"
+    template:
+      content: |
+        {"blocks": [
+          {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "*{{ labels.alertname }}*\n{{ annotations.summary }}\n\n*Labels:* {% for key, value in labels.items() %}\n• {{ key }}: {{ value }}\n{% endfor %}"}
+          }
+        ]}
+
+  # Audit Slack (all alerts for logging)
+  - name: slack-audit
+    type: slack
+    webhook_url: "${SLACK_AUDIT_WEBHOOK_URL}"
+    template:
+      content: |
+        {"text": "[{{ status | upper }}] {{ labels.alertname }} | {{ labels.namespace }} | {{ labels.severity | upper }}\n{{ annotations.summary }}"}
+
+# Groups - Team-specific routing with many-to-many relationships
+groups:
+  # ============ TEAM A ROUTING ============
+  
+  # Team A namespace alerts (team ownership)
+  - name: team-a-namespace-alerts
+    destinations: [slack-team-a]
+    group_by: [alertname, cluster]
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-a, team-a-production, team-a-staging]
+
+  # Team A critical alerts (go to team + on-call)
+  - name: team-a-critical
+    destinations: [slack-team-a, discord-oncall]
+    group_by: [alertname, cluster]
+    deduplication_window: 3600  # Remind every hour
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-a, team-a-production, team-a-staging]
+      - type: label_equals
+        label: severity
+        values: [critical]
+
+  # ============ TEAM B ROUTING ============
+
+  # Team B namespace alerts
+  - name: team-b-namespace-alerts
+    destinations: [slack-team-b]
+    group_by: [alertname, cluster]
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-b, team-b-production, team-b-staging]
+
+  # Team B critical alerts (go to team + on-call)
+  - name: team-b-critical
+    destinations: [slack-team-b, discord-oncall]
+    group_by: [alertname, cluster]
+    deduplication_window: 3600
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-b, team-b-production, team-b-staging]
+      - type: label_equals
+        label: severity
+        values: [critical]
+
+  # ============ DATABASE TEAM ROUTING ============
+
+  # Database alerts (regex pattern on alertname)
+  - name: database-alerts
+    destinations: [slack-db-team]
+    group_by: [alertname, database_name, cluster]
+    match:
+      - type: label_matches
+        label: alertname
+        pattern: ".*Database.*|.*Postgres.*|.*MySQL.*|.*Redis.*|.*MongoDB.*"
+
+  # Critical database alerts (go to DB team + on-call)
+  - name: database-critical
+    destinations: [slack-db-team, discord-oncall]
+    group_by: [alertname, database_name, cluster]
+    deduplication_window: 1800  # Remind every 30 minutes
+    match:
+      - type: label_matches
+        label: alertname
+        pattern: ".*Database.*|.*Postgres.*|.*MySQL.*|.*Redis.*|.*MongoDB.*"
+      - type: label_equals
+        label: severity
+        values: [critical]
+
+  # ============ PRODUCTION ROUTING (OPS TEAM) ============
+
+  # All production alerts (ops team awareness)
+  - name: production-alerts
+    destinations: [slack-ops-team]
+    group_by: [alertname, cluster]
+    match:
+      - type: label_equals
+        label: environment
+        values: [production]
+
+  # All staging alerts (ops team awareness)
+  - name: staging-alerts
+    destinations: [slack-ops-team]
+    group_by: [alertname, cluster]
+    match:
+      - type: label_equals
+        label: environment
+        values: [staging]
+
+  # ============ CRITICAL ALERTS (ON-CALL) ============
+
+  # All critical alerts (regardless of team) - go to on-call
+  - name: all-critical
+    destinations: [discord-oncall]
+    group_by: [alertname, cluster]
+    deduplication_window: 3600
+    match:
+      - type: label_equals
+        label: severity
+        values: [critical]
+
+  # ============ AUDIT (ALL ALERTS) ============
+
+  # All alerts for audit/logging
+  - name: audit-all-alerts
+    destinations: [slack-audit]
+    group_by: [alertname, cluster]
+    match:
+      - type: always_match
+
+  # ============ EXCLUSIONS ============
+
+  # Exclude kube-system alerts (not operator's responsibility)
+  - name: exclude-kube-system
+    destinations: [slack-ops-team]
+    match:
+      - type: label_not_equals
+        label: namespace
+        values: [kube-system, kube-public]
+
+# How to use this configuration:
+#
+# 1. Set environment variables for webhooks:
+#    export SLACK_TEAM_A_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/TEAM/A/WEBHOOK"
+#    export SLACK_TEAM_B_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/TEAM/B/WEBHOOK"
+#    export SLACK_DB_TEAM_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/DB/TEAM/WEBHOOK"
+#    export DISCORD_ONCALL_WEBHOOK_URL="https://discord.com/api/webhooks/YOUR/ONCALL/WEBHOOK"
+#    export SLACK_OPS_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/OPS/WEBHOOK"
+#    export SLACK_AUDIT_WEBHOOK_URL="https://hooks.slack.com/services/YOUR/AUDIT/WEBHOOK"
+#
+# 2. For multi-replica deployment, configure Redis:
+#    export REDIS_URL=redis://redis:6379/0
+#
+# 3. Run Hermes:
+#    python -m src.main
+#
+# Example alert routing scenarios:
+#
+# Scenario 1: Team A warning alert (namespace=team-a, severity=warning)
+# → Goes to: Team A Slack, Ops team Slack, Audit Slack
+# → Does NOT go to: On-call (not critical)
+#
+# Scenario 2: Team A critical alert (namespace=team-a, severity=critical)
+# → Goes to: Team A Slack, On-call Discord, Ops team Slack, Audit Slack
+# → Multiple destinations for critical alerts (many-to-many)
+#
+# Scenario 3: Database alert (alertname=PostgreSQLDatabaseDown, severity=warning)
+# → Goes to: DB Team Slack, Ops team Slack, Audit Slack
+# → Matches database-alerts group
+#
+# Scenario 4: Critical database alert (alertname=PostgreSQLDatabaseDown, severity=critical)
+# → Goes to: DB Team Slack, On-call Discord, Ops team Slack, Audit Slack
+# → Matches both database-critical and all-critical groups
+#
+# Scenario 5: Production critical alert (environment=production, severity=critical)
+# → Goes to: On-call Discord, Ops team Slack, Audit Slack
+# → Matches both all-critical and production-alerts groups
+#
+# Scenario 6: Staging warning alert (environment=staging, severity=warning)
+# → Goes to: Ops team Slack, Audit Slack
+# → Matches staging-alerts group
+#
+# Scenario 7: kube-system alert (namespace=kube-system, severity=warning)
+# → Goes to: Audit Slack only
+# → Matches audit-all-alerts group (not excluded from this)
+#
+# Key features demonstrated:
+#
+# 1. Team ownership by namespace:
+#    - Team A alerts (namespace=team-a-*) → Team A Slack
+#    - Team B alerts (namespace=team-b-*) → Team B Slack
+#
+# 2. Service-specific routing:
+#    - Database alerts (regex on alertname) → DB Team Slack
+#
+# 3. Critical alert escalation:
+#    - Critical alerts → Team Slack + On-call Discord
+#    - deduplication_window ensures periodic reminders
+#
+# 4. Ops team awareness:
+#    - Production alerts → Ops team Slack
+#    - Staging alerts → Ops team Slack
+#
+# 5. Many-to-many routing:
+#    - Critical Team A alert → Team A Slack + On-call
+#    - Critical DB alert → DB Team Slack + On-call
+#    - Same alert can match multiple groups
+#
+# 6. Grouped alerts:
+#    - group_by: [alertname, cluster] reduces noise
+#    - Similar alerts combined into one notification
+#
+# 7. Deduplication windows:
+#    - Critical alerts: 3600s (1 hour reminders)
+#    - Database critical: 1800s (30 min reminders)
+#    - Other alerts: 0 (no reminders)
+#
+# 8. Audit trail:
+#    - All alerts go to audit Slack
+#    - Provides complete alert history
+#
+# Next steps:
+# - Read docs/tutorials/advanced-routing.md for detailed explanation
+# - Read docs/concepts/routing-and-groups.md for OR routing concepts
+# - Read docs/concepts/deduplication.md for deduplication and windows
+# - Modify this config for your team structure and destinations

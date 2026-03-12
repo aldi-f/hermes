@@ -1,0 +1,139 @@
+# Simple Hermes Configuration
+# This is a complete, working configuration for getting started with Hermes
+# Use this to learn the basics before moving to more complex setups
+
+settings:
+  # How to compute alert fingerprint (alert identity)
+  # auto: Use Alertmanager fingerprint if available, else compute custom
+  # alertmanager: Require Alertmanager fingerprint
+  # custom: Always compute custom fingerprint
+  fingerprint_strategy: "auto"
+
+  # How long (in seconds) to keep alert state for deduplication
+  # After this time, alert state is forgotten and duplicate alerts may be sent again
+  deduplication_ttl: 300
+
+  # Port for Prometheus metrics endpoint
+  metrics_port: 9090
+
+# Destinations define where alerts are sent
+# You can have multiple destinations: slack, discord, stdout
+destinations:
+  # stdout destination prints alerts to the terminal
+  # Great for testing and development
+  - name: stdout-alerts
+    type: stdout
+    template:
+      # Simple text template
+      content: |
+        Alert: {{ status }}
+        Labels: {{ labels }}
+        Annotations: {{ annotations }}
+        StartsAt: {{ startsAt }}
+
+  # Uncomment to use Slack
+  # - name: slack-alerts
+  #   type: slack
+  #   # Use environment variable to keep webhook URL out of config
+  #   webhook_url: "${SLACK_WEBHOOK_URL}"
+  #   template:
+  #     # Simple text format
+  #     content: |
+  #       {"text": "Alert: {{ status }} - {{ labels.alertname }}\n{{ annotations.summary }}"}
+
+  # Uncomment to use Slack Block Kit (rich formatting)
+  # - name: slack-blockkit
+  #   type: slack
+  #   webhook_url: "${SLACK_WEBHOOK_URL}"
+  #   template:
+  #     content: |
+  #       {"blocks": [
+  #         {"type": "section",
+  #          "text": {"type": "mrkdwn",
+  #                   "text": "{% if status == 'firing' %}🚨 *Alert Firing*{% else %}✅ *Alert Resolved*{% endif %}\n\n*Alert:* {{ labels.alertname }}\n*Status:* {{ status }}\n*Summary:* {{ annotations.summary }}"
+  #                  }
+  #          }
+  #         }
+  #       ]}
+
+# Groups define how to match alerts and where to send them
+# Each group can match alerts using multiple rules (OR logic)
+# An alert can match multiple groups and be sent to multiple destinations
+groups:
+  # This group matches ALL alerts (useful for testing)
+  - name: all-alerts
+    destinations: [stdout-alerts]
+    match:
+      - type: always_match
+
+  # Uncomment to match alerts by namespace
+  # - name: team-a-alerts
+  #   destinations: [slack-alerts]
+  #   match:
+  #     # Match alerts from team-a OR team-production namespaces
+  #     - type: label_equals
+  #       label: namespace
+  #       values: [team-a, team-production]
+
+  # Uncomment to match alerts by severity
+  # - name: critical-alerts
+  #   destinations: [slack-alerts]
+  #   match:
+  #     # Match alerts with critical OR error severity
+  #     - type: label_equals
+  #       label: severity
+  #       values: [critical, error]
+
+  # Uncomment to match alerts by regex pattern
+  # - name: database-alerts
+  #   destinations: [slack-alerts]
+  #   match:
+  #     # Match alerts where container name ends with "-db-"
+  #     - type: label_matches
+  #       label: container
+  #       pattern: ".*-db-.*"
+
+  # Uncomment to match multiple rules (OR logic)
+  # - name: important-alerts
+  #   destinations: [slack-alerts]
+  #   match:
+  #     # Match if severity is critical OR container contains "database"
+  #     - type: label_equals
+  #       label: severity
+  #       values: [critical]
+  #     - type: label_contains
+  #       label: container
+  #       values: [database]
+
+# How to use this configuration:
+#
+# 1. Save this as config.yaml in the Hermes directory
+# 2. For development/testing:
+#    python -m src.main
+#    # Alerts will print to stdout (your terminal)
+#
+# 3. For Slack integration:
+#    a. Uncomment the slack-alerts or slack-blockkit destination
+#    b. Get a Slack webhook URL from https://api.slack.com/messaging/webhooks
+#    c. Set environment variable: export SLACK_WEBHOOK_URL="your-webhook-url"
+#    d. Uncomment and configure groups to match your alerts
+#    e. Run: python -m src.main
+#
+# 4. Test with curl:
+#    curl -X POST http://localhost:8080/webhook \
+#      -H "Content-Type: application/json" \
+#      -d '{
+#        "alerts": [{
+#          "status": "firing",
+#          "labels": {"alertname": "TestAlert", "namespace": "production"},
+#          "annotations": {"summary": "Test alert"},
+#          "startsAt": "2024-01-01T00:00:00Z"
+#        }]
+#      }'
+#
+# 5. Verify in Slack or terminal output
+#
+# Next steps:
+# - Read docs/tutorials/getting-started.md for getting started guide
+# - Read docs/tutorials/basic-alert-routing.md for routing examples
+# - See docs/examples/ for more configuration examples

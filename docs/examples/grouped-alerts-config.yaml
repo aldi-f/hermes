@@ -1,0 +1,273 @@
+# Grouped Alerts Configuration Example
+# This config demonstrates different alert grouping strategies
+# See docs/tutorials/group-alerts.md for detailed guide
+
+settings:
+  fingerprint_strategy: "auto"
+  deduplication_ttl: 300
+  metrics_port: 9090
+
+# Destinations - Configure Slack webhooks (or use stdout for testing)
+destinations:
+  # Slack destination for grouped alerts
+  - name: slack-grouped-alerts
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    template:
+      content: |
+        {"text": "*{{ common_labels.severity | upper }} Alert*\n*{{ common_labels.alertname }}* in {{ common_labels.cluster }}\n\n{{ alerts | length }} alerts:\n{% for alert in alerts %}• {{ alert.labels.pod | default('unknown') }}: {{ alert.annotations.description | default('No description') }}\n{% endfor %}"}
+
+  # Slack Block Kit for rich formatting
+  - name: slack-blockkit-grouped
+    type: slack
+    webhook_url: "${SLACK_BLOCKKIT_WEBHOOK_URL}"
+    template:
+      content: |
+        {"blocks": [
+          {
+            "type": "header",
+            "text": {
+              "type": "plain_text",
+              "text": "{% if common_labels.severity == 'critical' %}🚨 {% elif common_labels.severity == 'warning' %}⚠️ {% else %}ℹ️ {% endif %}{{ common_labels.alertname }}"
+            }
+          },
+          {
+            "type": "section",
+            "fields": [
+              {"type": "mrkdwn", "text": "*Severity:* {{ common_labels.severity | upper }}"},
+              {"type": "mrkdwn", "text": "*Cluster:* {{ common_labels.cluster }}"},
+              {"type": "mrkdwn", "text": "*Alerts:* {{ alerts | length }}"}
+            ]
+          },
+          {
+            "type": "section",
+            "text": {
+              "type": "mrkdwn",
+              "text": "*Affected pods:*\n{% for alert in alerts %}• `{{ alert.labels.pod | default('unknown') }}`: {{ alert.annotations.description | default('No description') }}\n{% endfor %}"
+            }
+          }
+        ]}
+
+  # Stdout for testing
+  - name: stdout-grouped
+    type: stdout
+    template:
+      content: |
+        Group: {{ group_name }}
+        Alerts: {{ alerts | length }}
+        Common labels: {{ common_labels }}
+        ---
+        {% for alert in alerts %}
+        Pod: {{ alert.labels.pod | default('unknown') }}
+        Description: {{ alert.annotations.description | default('No description') }}
+        {% endfor %}
+
+# Groups - Different grouping strategies
+groups:
+  # Group by alertname and cluster
+  # This groups alerts with the same alertname and cluster together
+  - name: group-by-alertname-and-cluster
+    destinations: [slack-grouped-alerts]
+    group_by: [alertname, cluster]
+    match:
+      - type: label_equals
+        label: environment
+        values: [production]
+    # deduplication_window: 0  # Never resend (default)
+
+  # Group by alertname only
+  # This groups alerts with the same alertname across clusters
+  - name: group-by-alertname-only
+    destinations: [slack-grouped-alerts]
+    group_by: [alertname]
+    match:
+      - type: label_equals
+        label: environment
+        values: [staging]
+
+  # Group by namespace
+  # This groups alerts from the same namespace together
+  - name: group-by-namespace
+    destinations: [slack-blockkit-grouped]
+    group_by: [namespace]
+    match:
+      - type: label_equals
+        label: environment
+        values: [production]
+
+  # Critical alerts with deduplication window
+  # Grouped critical alerts are resent every hour
+  - name: critical-alerts-with-window
+    destinations: [slack-blockkit-grouped]
+    group_by: [alertname, cluster]
+    deduplication_window: 3600  # Resend every hour
+    match:
+      - type: label_equals
+        label: severity
+        values: [critical]
+
+  # Warning alerts without window
+  # Grouped warning alerts are only sent once
+  - name: warning-alerts-no-window
+    destinations: [slack-grouped-alerts]
+    group_by: [alertname, cluster]
+    deduplication_window: 0  # Never resend (default)
+    match:
+      - type: label_equals
+        label: severity
+        values: [warning]
+
+  # Group by service and severity
+  # This groups alerts by service and severity
+  - name: group-by-service-and-severity
+    destinations: [slack-grouped-alerts]
+    group_by: [service, severity]
+    match:
+      - type: label_equals
+        label: environment
+        values: [production]
+
+  # Database alerts grouped by database name
+  - name: database-alerts-grouped
+    destinations: [slack-blockkit-grouped]
+    group_by: [database_name, cluster]
+    match:
+      - type: label_matches
+        label: alertname
+        pattern: ".*Database.*|.*Postgres.*|.*MySQL.*"
+
+  # All alerts grouped by cluster (for overview)
+  - name: cluster-overview
+    destinations: [stdout-grouped]
+    group_by: [cluster]
+    match:
+      - type: always_match
+
+# How to test this configuration:
+#
+# 1. Set Slack webhook URLs:
+#    export SLACK_WEBHOOK_URL="your-webhook-url"
+#    export SLACK_BLOCKKIT_WEBHOOK_URL="your-blockkit-webhook-url"
+#
+# 2. Run Hermes:
+#    python -m src.main
+#
+# 3. Send test alerts (in separate terminal):
+#
+#    # Test 1: Group by alertname and cluster
+#    curl -X POST http://localhost:8080/webhook \
+#      -H "Content-Type: application/json" \
+#      -d '{
+#        "alerts": [
+#          {
+#            "status": "firing",
+#            "labels": {
+#              "alertname": "HighMemory",
+#              "cluster": "production",
+#              "pod": "web-server-1",
+#              "environment": "production",
+#              "severity": "warning"
+#            },
+#            "annotations": {"description": "Memory usage at 85%"},
+#            "startsAt": "2024-01-01T00:00:00Z"
+#          },
+#          {
+#            "status": "firing",
+#            "labels": {
+#              "alertname": "HighMemory",
+#              "cluster": "production",
+#              "pod": "web-server-2",
+#              "environment": "production",
+#              "severity": "warning"
+#            },
+#            "annotations": {"description": "Memory usage at 87%"},
+#            "startsAt": "2024-01-01T00:00:00Z"
+#          }
+#        ]
+#      }'
+#    # Expected: ONE notification with 2 alerts grouped
+#
+#    # Test 2: Different alertname = different group
+#    curl -X POST http://localhost:8080/webhook \
+#      -H "Content-Type: application/json" \
+#      -d '{
+#        "alerts": [
+#          {
+#            "status": "firing",
+#            "labels": {
+#              "alertname": "HighCPU",
+#              "cluster": "production",
+#              "pod": "web-server-3",
+#              "environment": "production",
+#              "severity": "warning"
+#            },
+#            "annotations": {"description": "CPU usage at 90%"},
+#            "startsAt": "2024-01-01T00:00:00Z"
+#          },
+#          {
+#            "status": "firing",
+#            "labels": {
+#              "alertname": "HighCPU",
+#              "cluster": "production",
+#              "pod": "web-server-4",
+#              "environment": "production",
+#              "severity": "warning"
+#            },
+#            "annotations": {"description": "CPU usage at 92%"},
+#            "startsAt": "2024-01-01T00:00:00Z"
+#          }
+#        ]
+#      }'
+#    # Expected: ONE notification (different group from Test 1)
+#
+#    # Test 3: Deduplication window for critical alerts
+#    curl -X POST http://localhost:8080/webhook \
+#      -H "Content-Type: application/json" \
+#      -d '{
+#        "alerts": [
+#          {
+#            "status": "firing",
+#            "labels": {
+#              "alertname": "DatabaseDown",
+#              "cluster": "production",
+#              "pod": "postgres-1",
+#              "environment": "production",
+#              "severity": "critical"
+#            },
+#            "annotations": {"description": "Database is down"},
+#            "startsAt": "2024-01-01T00:00:00Z"
+#          }
+#        ]
+#      }'
+#    # Expected: Notification sent
+#    # Wait 1 hour, send same alert again: Notification sent again (deduplication_window)
+#
+# Examples of grouping strategies:
+#
+# 1. Group by alertname and cluster:
+#    - All HighMemory alerts in production cluster grouped together
+#    - All HighMemory alerts in staging cluster grouped separately
+#    - Useful: See all instances of same alert type in same cluster
+#
+# 2. Group by alertname only:
+#    - All HighMemory alerts grouped together across all clusters
+#    - Useful: See all instances of same alert type globally
+#
+# 3. Group by namespace:
+#    - All alerts from same namespace grouped together
+#    - Useful: Team ownership by namespace
+#
+# 4. Group by service and severity:
+#    - All warning alerts for same service grouped together
+#    - All critical alerts for same service grouped separately
+#    - Useful: Service-level visibility with severity grouping
+#
+# 5. Deduplication window:
+#    - Critical alerts: Remind every hour (deduplication_window: 3600)
+#    - Warning alerts: Send once, wait for resolve (deduplication_window: 0)
+#    - Useful: Critical alerts need ongoing visibility
+#
+# Next steps:
+# - Read docs/tutorials/group-alerts.md for detailed guide
+# - Read docs/concepts/deduplication.md for deduplication and windows
+# - Modify this config for your environment

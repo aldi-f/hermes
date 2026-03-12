@@ -2,35 +2,58 @@
 
 Hermes is an intermediary alert routing service that solves Alertmanager's limitations with OR matching and many-to-many alert routing.
 
-## Problem
+## 🚀 Getting Started
 
-Alertmanager routes alerts using tree-based routing with AND logic. When an alert belongs to multiple routes (many-to-many relationship), you need OR logic, which Alertmanager doesn't support.
+**New to Hermes?** Start with our [10-minute tutorial](docs/tutorials/getting-started.md) to get Hermes running locally.
 
-## Solution
-
-Hermes receives Alertmanager webhooks, evaluates each alert against configurable groups (OR logic), deduplicates per-group, applies templates, and sends to multiple destinations (Slack, Discord).
-
-## Quick Start
-
-### Install
+**Quick reference for experienced users:**
 
 ```bash
+# Install
 pip install -e .
-```
 
-### Run
-
-```bash
+# Run
 python -m src.main
+
+# Test
+curl -X POST http://localhost:8080/webhook \
+  -H "Content-Type: application/json" \
+  -d '{"alerts":[{"status":"firing","labels":{"namespace":"test"},"annotations":{"summary":"test"},"startsAt":"2024-01-01T00:00:00Z"}]}'
 ```
 
-### Configure
+## 📚 Documentation
 
-Edit `config.yaml`:
+- [Getting Started Tutorial](docs/tutorials/getting-started.md) - Zero to running in 10 minutes
+- [Documentation Overview](docs/README.md) - Complete documentation guide
+- [Tutorials](docs/tutorials/) - Hands-on tutorials for common scenarios
+- [Concepts](docs/concepts/) - Deep dives into architecture and features
+- [Examples](docs/examples/) - Complete, working configuration examples
+
+### Quick Links
+
+| Topic | Link |
+|-------|------|
+| Getting started | [Getting Started Guide](docs/tutorials/getting-started.md) |
+| Configure Slack/Discord | [Alert Routing Guide](docs/tutorials/basic-alert-routing.md) |
+| Reduce notification noise | [Alert Grouping Guide](docs/tutorials/group-alerts.md) |
+| Multiple destinations | [Multiple Destinations Guide](docs/tutorials/multiple-destinations.md) |
+| Advanced configuration | [Advanced Configuration Guide](docs/tutorials/advanced-routing.md) |
+| How routing works | [Routing and Groups](docs/concepts/routing-and-groups.md) |
+| How deduplication works | [Deduplication](docs/concepts/deduplication.md) |
+| How to customize messages | [Templating](docs/concepts/templating.md) |
+| Config examples | [Examples](docs/examples/) |
+| Deploy to Kubernetes | [Kubernetes Section](#kubernetes) |
+| Troubleshooting | [Troubleshooting Guide](docs/troubleshooting.md) |
+
+## Configuration
+
+For detailed configuration options, see the [Alert Routing Guide](docs/tutorials/basic-alert-routing.md) and [Examples](docs/examples/).
+
+### Quick Config Example
 
 ```yaml
 settings:
-  fingerprint_strategy: "auto"  # auto | alertmanager | custom
+  fingerprint_strategy: "auto"
   deduplication_ttl: 300
 
 destinations:
@@ -39,217 +62,56 @@ destinations:
     webhook_url: "${SLACK_WEBHOOK_URL}"
     template:
       content: |
-        {"text": "Alert: {{ status }} - {{ group_name }}"}
-
-  - name: slack-grouped
-    type: slack
-    webhook_url: "${SLACK_GROUPED_WEBHOOK_URL}"
-    template:
-      content: |
-        {"text": "*Alert:* `{{ alerts[0].labels.severity }}` - {{ group_labels.alertname }}\\n*Cluster:* `{{ group_labels.cluster }}`\\n*Messages:*\\n{% for alert in alerts %}\\n• {{ alert.annotations.description }}\\n{% endfor %}"}
+        {"text": "Alert: {{ status }} - {{ labels.alertname }}"}
 
 groups:
-  - name: team-a-team
+  - name: team-a-alerts
     destinations: [slack-alerts]
     match:
       - type: label_equals
         label: namespace
-        values: [team-a, dhc]
-      - type: label_matches
-        label: container
-        pattern: "team-a-.*"
-
-  - name: monitoring-team
-    destinations: [slack-grouped]
-    group_by: ["alertname", "cluster"]  # Group alerts by these labels
-    match:
-      - type: label_equals
-        label: cluster
-        values: [production, staging]
+        values: [team-a]
 ```
 
-### Send Test Alert
-
-```bash
-curl -X POST http://localhost:8080/webhook \
-  -H "Content-Type: application/json" \
-  -d '{
-    "alerts": [{
-      "status": "firing",
-      "labels": {"namespace": "team-a", "alertname": "HighMemory"},
-      "annotations": {"summary": "Memory usage high"},
-      "startsAt": "2024-01-01T00:00:00Z"
-    }]
-  }'
-```
+**For a complete working example**, see [docs/examples/simple-config.yaml](docs/examples/simple-config.yaml).
 
 ## Configuration
 
-### Config Reload
+For detailed configuration options, see:
+- [Alert Routing Guide](docs/tutorials/basic-alert-routing.md) - Setting up destinations and match rules
+- [Routing and Groups](docs/concepts/routing-and-groups.md) - How OR routing works
+- [Deduplication](docs/concepts/deduplication.md) - Fingerprinting and deduplication windows
+- [Templating](docs/concepts/templating.md) - Customizing message formats
+- [Examples](docs/examples/) - Complete configuration examples
 
-Hermes periodically checks for configuration changes using file checksums:
+### Quick Reference
 
-| Environment Variable | Default | Description |
-|---------------------|---------|-------------|
-| `ENABLE_RELOAD_CHECK` | `true` | Enable periodic config reload checks |
-| `CONFIG_RELOAD_INTERVAL` | `30` | Check interval in seconds |
+**Config Reload:**
+- Hermes automatically reloads config when file changes (every 30s by default)
+- Environment: `CONFIG_RELOAD_INTERVAL=10` checks every 10s
 
-When enabled, Hermes:
-1. Computes SHA-256 checksum of config file
-2. Compares with previously cached checksum
-3. If different: reloads configuration (validates and applies)
-4. Updates cached checksum
+**Key Settings:**
+- `fingerprint_strategy`: `auto`, `alertmanager`, or `custom`
+- `deduplication_ttl`: Keep alert state for N seconds (default: 300)
+- `metrics_port`: Prometheus metrics port (default: 9090)
 
-This provides efficient config reloading without file system watching overhead.
-
-### Settings
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `fingerprint_strategy` | string | `auto` | How to compute alert fingerprint: `auto` (use Alertmanager if available, else compute), `alertmanager` (require Alertmanager fingerprint), `custom` (always compute) |
-| `deduplication_ttl` | int | 300 | Time in seconds to keep alert state for deduplication |
-| `metrics_port` | int | 9090 | Port for Prometheus metrics |
-
-### Match Types
-
-| Type | Description |
-|------|-------------|
-| `label_equals` | Label value matches one of values |
-| `label_contains` | Label value contains substring |
-| `label_matches` | Label value matches regex pattern |
-| `label_not_equals` | Label value does not match any value |
-| `label_not_contains` | Label value does not contain substring |
-| `label_not_matches` | Label value does not match regex |
-| `annotation_equals` | Annotation value matches one of values |
-| `annotation_contains` | Annotation value contains substring |
-| `annotation_matches` | Annotation value matches regex pattern |
-| `always_match` | Always match (catch-all) |
-
-### Slack Templates
-
-Slack destinations support two message formats (choose one):
-
-**Block Kit Format (Recommended):**
-```yaml
-destinations:
-  - name: slack-alerts
-    type: slack
-    webhook_url: "${SLACK_WEBHOOK_URL}"
-    template:
-      content: |
-        {"blocks": [{"type": "section", "text": {"type": "mrkdwn", "text": "*Alert:* {{ status }}"}}]}
+**Environment Variables:**
+```bash
+CONFIG_PATH=config.yaml       # Config file path
+PORT=8080                     # HTTP server port
+REDIS_URL=redis://localhost  # Optional: for multi-replica deduplication
+SLACK_WEBHOOK_URL=...        # Use ${VAR_NAME} in config
 ```
 
-**Legacy Attachments Format:**
-```yaml
-destinations:
-  - name: slack-alerts
-    type: slack
-    webhook_url: "${SLACK_WEBHOOK_URL}"
-    attachments_template:
-      content: |
-        [{"color": "danger" if status == 'firing' else "good", "fields": [...]}]
-```
+### Quick Config Reference
 
-**Note:** Only one format can be specified per destination. Specifying both will cause a configuration error.
-
-### Grouped Output
-
-By default, Hermes sends one message per alert. To send multiple alerts in a single message, configure `group_by` with the labels to group by:
-
-```yaml
-groups:
-  - name: team-a-team
-    destinations: [slack-alerts]
-    group_by: ["alertname", "cluster"]  # Group alerts with same alertname and cluster
-    match:
-      - type: label_equals
-        label: namespace
-        values: [team-a, dhc]
-```
-
-When `group_by` is configured, alerts with matching label values are combined into one message. For example, with `group_by: ["alertname", "cluster"]`, all alerts with the same alertname and cluster will be sent together. If `group_by` is not specified or empty, alerts are sent individually (default behavior).
-
-### Deduplication Window
-
-Control how often to resend deduplicated alerts using `deduplication_window`:
-
-```yaml
-groups:
-  - name: critical-alerts
-    destinations: [slack]
-    match:
-      - type: label_equals
-        label: severity
-        values: [critical]
-    group_by: [alertname]
-    deduplication_window: 3600  # Resend every hour
-
-  - name: info-alerts
-    destinations: [slack]
-    match:
-      - type: label_equals
-        label: severity
-        values: [info]
-    group_by: [alertname]
-    deduplication_window: 0  # Never resend (default)
-```
-
-| Value | Behavior |
-|-------|----------|
-| `0` | Never resend deduplicated alerts (default) |
-| `> 0` | Resend every N seconds while alert is firing |
-
-Use higher values for critical alerts to ensure visibility, and `0` for non-urgent alerts to avoid noise.
-
-### Template Variables
-
-#### Individual Alert Templates (default)
-
-Available in templates:
-
-| Variable | Description |
-|----------|-------------|
-| `status` | `firing` or `resolved` |
-| `labels` | Dict of alert labels |
-| `annotations` | Dict of alert annotations |
-| `startsAt` | Alert start timestamp |
-| `endsAt` | Alert end timestamp (optional) |
-| `generatorURL` | Link to Alertmanager/Prometheus |
-| `fingerprint` | Alert fingerprint |
-| `group_name` | Matching group name |
-| `destination_name` | Destination name |
-
-#### Grouped Alert Templates (when `group_by` is configured)
-
-Available in templates:
-
-| Variable | Description |
-|----------|-------------|
-| `alerts` | List of alert objects (iterate with `{% for alert in alerts %}`) |
-| `group_labels` | Labels used for grouping (as configured in `group_by`) |
-| `common_labels` | Labels that are common to ALL alerts in the group (same key and value) |
-| `common_annotations` | Annotations that are common to ALL alerts in the group (same key and value) |
-| `status` | `firing` or `resolved` |
-| `group_name` | Matching group name |
-| `destination_name` | Destination name |
-
-Within `alerts` iteration, each alert object has: `status`, `labels`, `annotations`, `startsAt`, `endsAt`, `generatorURL`, `fingerprint`.
-
-**Example grouped template:**
-
-```yaml
-template:
-  content: |
-    *Alert:* `{{ common_labels.severity }}` - {{ common_labels.alertname }}
-    *Cluster:* `{{ common_labels.cluster }}`
-    *Messages:*
-    {% for alert in alerts %}
-    • {{ alert.annotations.description }}
-    {% endfor %}
-```
-
-**Note:** `common_labels` contains labels shared by ALL alerts in the group with identical values. For example, if all alerts have `severity=warning`, then `common_labels.severity` will be `warning`. Labels with different values across alerts (like `pod`) will not appear in `common_labels`.
+| Feature | Description | Docs |
+|---------|-------------|------|
+| Match types | `label_equals`, `label_matches`, `label_contains`, etc. | [Routing](docs/concepts/routing-and-groups.md) |
+| Group alerts | Combine similar alerts with `group_by` | [Tutorial](docs/tutorials/group-alerts.md) |
+| Deduplication window | Resend grouped alerts every N seconds | [Deduplication](docs/concepts/deduplication.md) |
+| Templates | Jinja2 templates for Slack/Discord | [Templating](docs/concepts/templating.md) |
+| Multiple destinations | Send alerts to Slack + Discord | [Tutorial](docs/tutorials/multiple-destinations.md) |
 
 ## Docker
 
