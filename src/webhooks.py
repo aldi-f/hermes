@@ -172,7 +172,7 @@ class AlertProcessor:
                     common_labels = self._compute_common_labels(grouped_alerts)
                     common_annotations = self._compute_common_annotations(grouped_alerts)
 
-                    if not await self._state_manager.should_send_group(
+                    if group.deduplicate and not await self._state_manager.should_send_group(
                         grouped_alerts, key, group.name, group.deduplication_window
                     ):
                         results["deduplicated"] += len(grouped_alerts)
@@ -236,7 +236,9 @@ class AlertProcessor:
                         ).inc()
             else:
                 for alert in alerts:
-                    if not await self._state_manager.should_send(alert, group.name, metrics):
+                    if group.deduplicate and not await self._state_manager.should_send(
+                        alert, group.name, metrics
+                    ):
                         results["deduplicated"] += 1
                         logger.debug(
                             "Alert deduplicated",

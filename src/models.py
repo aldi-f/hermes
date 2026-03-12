@@ -96,6 +96,7 @@ class Group(BaseModel):
     destinations: list[str]
     match: list[MatchRule]
     group_by: list[str] = Field(default_factory=list)
+    deduplicate: bool = True
     deduplication_window: int = 0
 
     @model_validator(mode="after")

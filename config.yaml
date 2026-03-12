@@ -102,6 +102,8 @@ groups:
   - name: team-a
     destinations:
       - slack-team-a
+    deduplicate: true  # Default behavior - deduplication enabled
+    deduplication_window: 600  # Optional: override global deduplication TTL for this group (in seconds)
     match:
       - type: label_equals
         label: namespace
@@ -116,6 +118,7 @@ groups:
   - name: team-b
     destinations:
       - slack-team-a
+    deduplicate: false  # Send all alerts without deduplication
     match:
       - type: label_equals
         label: namespace
