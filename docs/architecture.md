@@ -348,3 +348,16 @@ See `/metrics` endpoint for Prometheus metrics:
 | `spreader_alerts_deduplicated_total` | Counter | group |
 | `spreader_redis_connected` | Gauge | - |
 | `spreader_redis_queue_size` | Gauge | - |
+
+## Related Documentation
+
+For configuration guides and in-depth concept documentation, see:
+
+- [Documentation Overview](README.md) - Complete documentation index
+- [Getting Started Guide](tutorials/getting-started.md) - Installation and basic setup
+- [Routing and Groups](concepts/routing-and-groups.md) - How OR routing works
+- [Deduplication](concepts/deduplication.md) - Fingerprinting and state management
+- [Templating](concepts/templating.md) - Customizing notification formats
+- [State Management](concepts/state-management.md) - Redis vs in-memory state
+- [Guides](tutorials/) - Configuration guides for common scenarios
+- [Examples](examples/) - Complete, working configuration examples
