@@ -94,6 +94,7 @@ class MatchRule(BaseModel):
 class Group(BaseModel):
     name: str
     destinations: list[str]
+    filters: list[MatchRule] = Field(default_factory=list)
     match: list[MatchRule]
     group_by: list[str] = Field(default_factory=list)
     deduplicate: bool = True

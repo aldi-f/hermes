@@ -104,6 +104,13 @@ groups:
       - slack-team-a
     deduplicate: true  # Default behavior - deduplication enabled
     deduplication_window: 600  # Optional: override global deduplication TTL for this group (in seconds)
+    filters:
+      - type: label_not_equals
+        label: cluster
+        values: [dev]  # Exclude alerts from dev cluster
+      - type: label_not_equals
+        label: tenant
+        values: [dev]  # Exclude alerts with tenant=dev
     match:
       - type: label_equals
         label: namespace

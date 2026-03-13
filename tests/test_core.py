@@ -3,7 +3,12 @@ from datetime import datetime
 import pytest
 
 from src.fingerprint import compute_fingerprint, get_fingerprint
-from src.matcher import alert_matches_group, get_matching_groups, matches_rule
+from src.matcher import (
+    alert_matches_filters,
+    alert_matches_group,
+    get_matching_groups,
+    matches_rule,
+)
 from src.models import (
     Alert,
     AlertContext,
@@ -179,6 +184,203 @@ class TestMatcher:
         matching = get_matching_groups(alert, groups)
         assert len(matching) == 1
         assert matching[0].name == "team-a"
+
+    def test_filter_passes_when_all_filters_match(self):
+        alert = Alert(
+            status="firing",
+            labels={"cluster": "prod", "tenant": "prod", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="production",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_EQUALS, label="cluster", values=["prod"]),
+                MatchRule(type=MatchType.LABEL_EQUALS, label="tenant", values=["prod"]),
+            ],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is True
+
+    def test_filter_fails_when_any_filter_does_not_match(self):
+        alert = Alert(
+            status="firing",
+            labels={"cluster": "dev", "tenant": "prod", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="production",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_EQUALS, label="cluster", values=["prod"]),
+                MatchRule(type=MatchType.LABEL_EQUALS, label="tenant", values=["prod"]),
+            ],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is False
+
+    def test_filter_passes_with_empty_filters_list(self):
+        alert = Alert(
+            status="firing",
+            labels={"namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="team-a",
+            destinations=["slack"],
+            filters=[],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is True
+
+    def test_filter_passes_with_no_filters_field(self):
+        alert = Alert(
+            status="firing",
+            labels={"namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="team-a",
+            destinations=["slack"],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is True
+
+    def test_filters_with_not_equals_passes(self):
+        alert = Alert(
+            status="firing",
+            labels={"cluster": "prod", "tenant": "prod", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="production",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_NOT_EQUALS, label="cluster", values=["dev"]),
+                MatchRule(type=MatchType.LABEL_NOT_EQUALS, label="tenant", values=["dev"]),
+            ],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is True
+
+    def test_filters_with_not_equals_fails(self):
+        alert = Alert(
+            status="firing",
+            labels={"cluster": "prod", "tenant": "dev", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="production",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_NOT_EQUALS, label="cluster", values=["dev"]),
+                MatchRule(type=MatchType.LABEL_NOT_EQUALS, label="tenant", values=["dev"]),
+            ],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is False
+
+    def test_filters_with_not_contains_passes(self):
+        alert = Alert(
+            status="firing",
+            labels={"namespace": "team-a-production"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="production",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_NOT_CONTAINS, label="namespace", substring="test"),
+            ],
+            match=[
+                MatchRule(
+                    type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a-production"]
+                )
+            ],
+        )
+        assert alert_matches_group(alert, group) is True
+
+    def test_filters_with_not_contains_fails(self):
+        alert = Alert(
+            status="firing",
+            labels={"namespace": "team-a-test"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="production",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_NOT_CONTAINS, label="namespace", substring="test"),
+            ],
+            match=[
+                MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a-test"])
+            ],
+        )
+        assert alert_matches_group(alert, group) is False
+
+    def test_filters_exclude_dev_cluster_and_tenant(self):
+        alert_dev_cluster = Alert(
+            status="firing",
+            labels={"cluster": "dev", "tenant": "prod", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        alert_prod_dev_tenant = Alert(
+            status="firing",
+            labels={"cluster": "prod", "tenant": "dev", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        alert_prod_prod_tenant = Alert(
+            status="firing",
+            labels={"cluster": "prod", "tenant": "prod", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+
+        group = Group(
+            name="production-only",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_NOT_EQUALS, label="cluster", values=["dev"]),
+                MatchRule(type=MatchType.LABEL_NOT_EQUALS, label="tenant", values=["dev"]),
+            ],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+
+        assert alert_matches_group(alert_dev_cluster, group) is False
+        assert alert_matches_group(alert_prod_dev_tenant, group) is False
+        assert alert_matches_group(alert_prod_prod_tenant, group) is True
+
+    def test_filter_passes_but_matcher_fails(self):
+        alert = Alert(
+            status="firing",
+            labels={"cluster": "prod", "tenant": "prod", "namespace": "team-b"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="team-a",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_EQUALS, label="cluster", values=["prod"]),
+                MatchRule(type=MatchType.LABEL_EQUALS, label="tenant", values=["prod"]),
+            ],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is False
+
+    def test_filter_fails_no_matcher_check(self):
+        alert = Alert(
+            status="firing",
+            labels={"cluster": "dev", "tenant": "dev", "namespace": "team-a"},
+            startsAt=datetime.now(),
+        )
+        group = Group(
+            name="production",
+            destinations=["slack"],
+            filters=[
+                MatchRule(type=MatchType.LABEL_NOT_EQUALS, label="cluster", values=["dev"]),
+            ],
+            match=[MatchRule(type=MatchType.LABEL_EQUALS, label="namespace", values=["team-a"])],
+        )
+        assert alert_matches_group(alert, group) is False
 
 
 class TestFingerprint:

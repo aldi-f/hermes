@@ -207,6 +207,201 @@ Matches: `namespace does not contain "test"` **AND** `namespace does not contain
 
 Matches: `alertname !~ "Test.*"`
 
+## Filters - Pre-Filtering Alerts
+
+Filters allow you to **exclude** alerts before they proceed to the matchers. Filters use **AND logic** - all filters must return True for the alert to proceed to matchers.
+
+### When to Use Filters
+
+Use filters when you want to:
+- Exclude alerts from specific environments (e.g., dev clusters)
+- Exclude alerts with certain labels (e.g., test tenants)
+- Pre-filter alerts before applying complex matcher logic
+
+### Filter Logic
+
+```
+For each group:
+    if filters not empty:
+        if ALL filters match (AND logic):
+            proceed to matchers
+        else:
+            skip group
+    else:
+        proceed to matchers
+    
+    if ANY matcher matches (OR logic):
+        include alert in group
+```
+
+### Filter Examples
+
+#### Exclude Dev Clusters and Tenants
+
+```yaml
+groups:
+  - name: production-only
+    destinations: [slack-ops]
+    filters:
+      - type: label_not_equals
+        label: cluster
+        values: [dev]  # Must NOT be dev cluster
+      - type: label_not_equals
+        label: tenant
+        values: [dev]  # Must NOT be dev tenant
+    match:
+      - type: label_equals
+        label: environment
+        values: [production]
+```
+
+This group will:
+- ❌ Exclude: `cluster=dev, tenant=prod, environment=production`
+- ❌ Exclude: `cluster=prod, tenant=dev, environment=production`
+- ✅ Include: `cluster=prod, tenant=prod, environment=production`
+
+#### Multiple Filter Conditions
+
+```yaml
+groups:
+  - name: critical-production
+    destinations: [slack-oncall]
+    filters:
+      - type: label_equals
+        label: cluster
+        values: [prod-us-east, prod-us-west]
+      - type: label_not_contains
+        label: namespace
+        substring: "test"
+      - type: label_equals
+        label: severity
+        values: [critical, warning]
+    match:
+      - type: always_match
+```
+
+All THREE filters must match for the alert to proceed:
+1. Cluster must be `prod-us-east` OR `prod-us-west`
+2. Namespace must NOT contain "test"
+3. Severity must be `critical` OR `warning`
+
+#### Filters + Matchers Combination
+
+```yaml
+groups:
+  - name: team-a-production
+    destinations: [slack-team-a]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging]  # Must NOT be dev or staging
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-a, team-a-production]
+      - type: label_matches
+        label: container
+        pattern: "team-a-.*"
+```
+
+Flow:
+1. Check filters: `environment != dev` AND `environment != staging`
+2. If filters pass, check matchers: `namespace = team-a` OR `container matches "team-a-.*"`
+
+#### Exclude Test Namespaces
+
+```yaml
+groups:
+  - name: team-a
+    destinations: [slack-team-a]
+    filters:
+      - type: label_not_contains
+        label: namespace
+        substring: "test"  # Must NOT contain "test"
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-a, team-a-production]
+```
+
+Excludes: `team-a-test`, `test-team-a`, `team-a-test-app`
+Includes: `team-a`, `team-a-production`, `team-a-app`
+
+### Filter vs Matcher
+
+| Feature | Filters | Matchers |
+|---------|---------|----------|
+| **Logic** | AND (all must match) | OR (any can match) |
+| **Purpose** | Pre-filter alerts | Final matching |
+| **Order** | Checked first | Checked after filters |
+| **Empty** | Proceeds to matchers | Alert doesn't match group |
+
+### Common Filter Patterns
+
+#### Exclude Non-Production
+
+```yaml
+filters:
+  - type: label_not_equals
+    label: environment
+    values: [dev, staging, test]
+```
+
+#### Exclude Debug Alerts
+
+```yaml
+filters:
+  - type: label_not_contains
+    label: alertname
+    substring: "Debug"
+```
+
+#### Only Critical Severity
+
+```yaml
+filters:
+  - type: label_equals
+    label: severity
+    values: [critical]
+```
+
+#### Exclude Specific Namespaces
+
+```yaml
+filters:
+  - type: label_not_equals
+    label: namespace
+    values: [kube-system, kube-public, monitoring]
+```
+
+### Empty Filters
+
+If filters are empty or not specified, alerts proceed directly to matchers:
+
+```yaml
+groups:
+  - name: team-a  # No filters - proceeds directly to matchers
+    destinations: [slack-team-a]
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-a]
+```
+
+This is the default behavior and ensures backward compatibility.
+
+### Performance Considerations
+
+Filters are checked **before** matchers. Use filters for:
+- Simple, fast checks (e.g., `label_equals`, `label_not_equals`)
+- Pre-filtering to reduce matcher evaluation
+- Excluding large groups of alerts
+
+Use matchers for:
+- Complex logic (e.g., regex patterns)
+- Multiple conditions with OR logic
+- Final alert selection
+
 ### Annotation Match Types
 
 Same as label types but for annotations:
@@ -235,7 +430,11 @@ Matches all alerts (useful for catch-all groups).
 groups:
   - name: unique-group-name          # Required: unique identifier
     destinations: [slack-alerts]       # Required: list of destination names
-    match:                             # Required: list of match rules
+    filters:                           # Optional: list of filter rules (AND logic)
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging]
+    match:                             # Required: list of match rules (OR logic)
       - type: label_equals
         label: namespace
         values: [team-a]
@@ -249,6 +448,7 @@ groups:
 |-------|----------|-------------|
 | `name` | Yes | Unique identifier for the group |
 | `destinations` | Yes | List of destination names to send alerts to |
+| `filters` | No | List of filter rules (AND logic) - all must match to proceed |
 | `match` | Yes | List of match rules (OR logic) |
 | `group_by` | No | Labels to group alerts by (see [Alert Grouping Guide](../tutorials/group-alerts.md)) |
 | `deduplication_window` | No | Resend grouped alerts every N seconds (0 = never) |
@@ -472,6 +672,69 @@ groups:
 
 The catch-all group ensures you see all alerts even if they don't match specific groups.
 
+### 7. Use Filters to Exclude Noise
+
+```yaml
+# ❌ Bad: Excluding dev alerts in every matcher
+- name: team-a
+  match:
+    - type: label_not_equals
+      label: environment
+      values: [dev]
+    - type: label_equals
+      label: namespace
+      values: [team-a]
+
+- name: team-b
+  match:
+    - type: label_not_equals
+      label: environment
+      values: [dev]
+    - type: label_equals
+      label: namespace
+      values: [team-b]
+
+# ✅ Good: Use filters to exclude once
+- name: team-a
+  filters:
+    - type: label_not_equals
+      label: environment
+      values: [dev, staging]
+  match:
+    - type: label_equals
+      label: namespace
+      values: [team-a]
+
+- name: team-b
+  filters:
+    - type: label_not_equals
+      label: environment
+      values: [dev, staging]
+  match:
+    - type: label_equals
+      label: namespace
+      values: [team-b]
+```
+
+Filters are evaluated once per group before matchers, making them more efficient for exclusions.
+
+```yaml
+groups:
+  - name: catch-all
+    destinations: [slack-alerts-audit]
+    match:
+      - type: always_match
+
+  - name: team-a
+    destinations: [slack-team-a]
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-a]
+```
+
+The catch-all group ensures you see all alerts even if they don't match specific groups.
+
 ## Common Patterns
 
 ### Route by Severity
@@ -564,6 +827,10 @@ groups:
 groups:
   - name: production
     destinations: [slack-production]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging, test]
     match:
       - type: label_equals
         label: environment
@@ -584,14 +851,48 @@ groups:
         values: [development]
 ```
 
+### Exclude Dev/Staging from All Production Groups
+
+```yaml
+groups:
+  - name: production-critical
+    destinations: [slack-oncall]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging, test]
+      - type: label_not_equals
+        label: cluster
+        values: [dev-cluster]
+    match:
+      - type: label_equals
+        label: severity
+        values: [critical]
+
+  - name: production-db
+    destinations: [slack-db-team]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging, test]
+      - type: label_not_equals
+        label: cluster
+        values: [dev-cluster]
+    match:
+      - type: label_matches
+        label: container
+        pattern: ".*-db-.*"
+```
+
 ## Troubleshooting
 
 ### Alert Not Matching Any Group
 
 1. Check the alert labels match the match rules
-2. Verify the match type (equals, contains, matches)
-3. Check for typos in label names or values
-4. Use a catch-all group to debug:
+2. Verify filters are not excluding the alert
+3. Verify the match type (equals, contains, matches)
+4. Check for typos in label names or values
+5. Use a catch-all group to debug:
 
 ```yaml
 groups:
@@ -599,6 +900,66 @@ groups:
     destinations: [slack-debug]
     match:
       - type: always_match
+```
+
+### Alert Excluded by Filters
+
+If alerts are not reaching matchers, check the filters:
+
+```yaml
+# ❌ Wrong: Too restrictive filters
+- name: production
+  filters:
+    - type: label_equals
+      label: environment
+      values: [production]
+    - type: label_equals
+      label: cluster
+      values: [prod-us-east]  # Only prod-us-east, not prod-us-west
+  match:
+    - type: always_match
+
+# ✅ Right: Less restrictive filters
+- name: production
+  filters:
+    - type: label_equals
+      label: environment
+      values: [production]
+    - type: label_matches
+      label: cluster
+      pattern: "prod-.*"  # Matches all prod clusters
+  match:
+    - type: always_match
+```
+
+### Filters vs Matchers Confusion
+
+Remember:
+- **Filters** = AND logic (all must match)
+- **Matchers** = OR logic (any can match)
+
+```yaml
+# ❌ Wrong: Using OR logic in filters (won't work as expected)
+- name: team-a
+  filters:
+    - type: label_equals
+      label: namespace
+      values: [team-a]
+    - type: label_equals
+      label: namespace
+      values: [team-b]  # This makes filters impossible to satisfy!
+  match:
+    - type: always_match
+
+# ✅ Right: Using OR logic in matchers
+- name: team-a
+  match:
+    - type: label_equals
+      label: namespace
+      values: [team-a]
+    - type: label_equals
+      label: namespace
+      values: [team-b]  # OR logic - matches either team-a or team-b
 ```
 
 ### Alert Matching Multiple Groups

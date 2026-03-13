@@ -46,6 +46,125 @@ match:
     pattern: "^team-.*"
 ```
 
+## Using Filters to Exclude Alerts
+
+Filters allow you to pre-filter alerts before they reach matchers. Use filters to exclude alerts from specific environments, tenants, or namespaces.
+
+### Exclude Development Environments
+
+```yaml
+groups:
+  - name: production-alerts
+    destinations: [slack-ops]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging, test]
+    match:
+      - type: label_equals
+        label: severity
+        values: [critical, warning]
+```
+
+### Exclude Dev Clusters and Tenants
+
+```yaml
+groups:
+  - name: production-only
+    destinations: [slack-oncall]
+    filters:
+      - type: label_not_equals
+        label: cluster
+        values: [dev]
+      - type: label_not_equals
+        label: tenant
+        values: [dev]
+    match:
+      - type: always_match
+```
+
+### Exclude Test Namespaces
+
+```yaml
+groups:
+  - name: team-a
+    destinations: [slack-team-a]
+    filters:
+      - type: label_not_contains
+        label: namespace
+        substring: "test"
+    match:
+      - type: label_equals
+        label: namespace
+        values: [team-a, team-a-production]
+```
+
+### Filters for Environment Separation
+
+```yaml
+groups:
+  # Only production alerts (excludes dev, staging, test)
+  - name: production
+    destinations: [slack-ops]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging, test]
+    match:
+      - type: label_equals
+        label: environment
+        values: [production]
+
+  # Only staging alerts (excludes dev, production, test)
+  - name: staging
+    destinations: [slack-staging]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [dev, production, test]
+    match:
+      - type: label_equals
+        label: environment
+        values: [staging]
+
+  # Only dev alerts (excludes staging, production, test)
+  - name: dev
+    destinations: [slack-dev]
+    filters:
+      - type: label_not_equals
+        label: environment
+        values: [production, staging, test]
+    match:
+      - type: label_equals
+        label: environment
+        values: [dev]
+```
+
+### Filters + Matchers for Precise Control
+
+```yaml
+groups:
+  - name: critical-production
+    destinations: [slack-oncall, slack-ops]
+    filters:
+      # Must NOT be dev or staging
+      - type: label_not_equals
+        label: environment
+        values: [dev, staging]
+      # Must NOT be dev cluster
+      - type: label_not_equals
+        label: cluster
+        values: [dev-cluster]
+    match:
+      # AND any of these match
+      - type: label_equals
+        label: severity
+        values: [critical]
+      - type: label_equals
+        label: alertname
+        values: [ServiceDown, DatabaseDown, APIDown]
+```
+
 ### Multiple Contains Patterns
 
 Match if alertname contains any of the values:

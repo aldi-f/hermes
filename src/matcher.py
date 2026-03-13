@@ -51,7 +51,21 @@ def matches_rule(alert: Alert, rule: MatchRule) -> bool:
     return False
 
 
+def alert_matches_filters(alert: Alert, group: Group) -> bool:
+    if not group.filters:
+        return True
+
+    for rule in group.filters:
+        if not matches_rule(alert, rule):
+            return False
+
+    return True
+
+
 def alert_matches_group(alert: Alert, group: Group) -> bool:
+    if not alert_matches_filters(alert, group):
+        return False
+
     for rule in group.match:
         if matches_rule(alert, rule):
             return True

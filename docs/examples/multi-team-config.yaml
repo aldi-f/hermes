@@ -209,6 +209,13 @@ groups:
   - name: production-alerts
     destinations: [slack-ops-team]
     group_by: [alertname, cluster]
+    filters:
+      - type: label_not_equals
+        label: cluster
+        values: [dev]  # Exclude dev cluster
+      - type: label_not_equals
+        label: tenant
+        values: [dev]  # Exclude alerts with tenant=dev (even in prod)
     match:
       - type: label_equals
         label: environment
