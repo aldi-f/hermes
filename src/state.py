@@ -162,5 +162,18 @@ class StateManager:
                 if s.group_name == group_name and s.status == "firing"
             )
 
+    async def get_queue_size(self) -> int:
+        if self._redis:
+            try:
+                keys = []
+                async for key in self._redis.client.scan_iter(match="hermes:alert:*", count=100):
+                    keys.append(key)
+                return len(keys)
+            except Exception as e:
+                logger.error(f"Redis scan failed: {e}")
+
+        async with self._local_lock:
+            return len(self._local_cache)
+
     def update_config(self, config: Config):
         self._config = config
