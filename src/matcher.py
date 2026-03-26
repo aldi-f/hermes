@@ -22,6 +22,16 @@ def matches_rule(alert: Alert, rule: MatchRule) -> bool:
 
     key = rule.label
     if key not in label_or_annotation:
+        # if key is missing but rule is a NOT rule, then it matches
+        if rule.type in (
+            MatchType.LABEL_NOT_EQUALS,
+            MatchType.ANNOTATION_NOT_EQUALS,
+            MatchType.LABEL_NOT_CONTAINS,
+            MatchType.ANNOTATION_NOT_CONTAINS,
+            MatchType.LABEL_NOT_MATCHES,
+            MatchType.ANNOTATION_NOT_MATCHES,
+        ):
+            return True
         return False
 
     value = label_or_annotation[key]
