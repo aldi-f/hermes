@@ -105,6 +105,45 @@ class TestMatcher:
         )
         assert matches_rule(alert, rule) is True
 
+    def test_label_not_equals_missing_label_passes(self):
+        alert = Alert(
+            status="firing",
+            labels={"namespace": "prod"},
+            startsAt=datetime.now(),
+        )
+        rule = MatchRule(
+            type=MatchType.LABEL_NOT_EQUALS,
+            label="cluster",
+            values=["dev"],
+        )
+        assert matches_rule(alert, rule) is True
+
+    def test_label_not_contains_missing_label_passes(self):
+        alert = Alert(
+            status="firing",
+            labels={"namespace": "prod"},
+            startsAt=datetime.now(),
+        )
+        rule = MatchRule(
+            type=MatchType.LABEL_NOT_CONTAINS,
+            label="cluster",
+            substring="dev",
+        )
+        assert matches_rule(alert, rule) is True
+
+    def test_label_not_matches_missing_label_passes(self):
+        alert = Alert(
+            status="firing",
+            labels={"namespace": "prod"},
+            startsAt=datetime.now(),
+        )
+        rule = MatchRule(
+            type=MatchType.LABEL_NOT_MATCHES,
+            label="cluster",
+            pattern="^dev-.*",
+        )
+        assert matches_rule(alert, rule) is True
+
     def test_annotation_equals(self):
         alert = Alert(
             status="firing",
@@ -626,6 +665,70 @@ class TestTemplateEngine:
         assert result == "pod-a,pod-b,pod-c,"
 
 
+class TestStateManagerDeduplication:
+    @pytest.mark.asyncio
+    async def test_deduplication_disabled_with_zero_ttl(self):
+        config = Config(
+            settings=Settings(fingerprint_strategy=FingerprintStrategy.CUSTOM, deduplication_ttl=0)
+        )
+        manager = StateManager(config)
+        alert = Alert(
+            status="firing",
+            labels={"alertname": "TestAlert"},
+            startsAt=datetime.now(),
+        )
+        result1 = await manager.should_send(alert, "test-group")
+        result2 = await manager.should_send(alert, "test-group")
+        assert result1 is True
+        assert result2 is True
+
+    @pytest.mark.asyncio
+    async def test_resolved_deletes_state(self):
+        config = Config(settings=Settings(fingerprint_strategy=FingerprintStrategy.CUSTOM))
+        manager = StateManager(config)
+        firing_alert = Alert(
+            status="firing",
+            labels={"alertname": "TestAlert"},
+            startsAt=datetime.now(),
+        )
+        await manager.should_send(firing_alert, "test-group")
+
+        resolved_alert = Alert(
+            status="resolved",
+            labels={"alertname": "TestAlert"},
+            startsAt=datetime.now(),
+        )
+        result = await manager.should_send(resolved_alert, "test-group")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_refire_after_resolved_sends_again(self):
+        config = Config(settings=Settings(fingerprint_strategy=FingerprintStrategy.CUSTOM))
+        manager = StateManager(config)
+
+        firing_alert = Alert(
+            status="firing",
+            labels={"alertname": "TestAlert"},
+            startsAt=datetime.now(),
+        )
+        await manager.should_send(firing_alert, "test-group")
+
+        resolved_alert = Alert(
+            status="resolved",
+            labels={"alertname": "TestAlert"},
+            startsAt=datetime.now(),
+        )
+        await manager.should_send(resolved_alert, "test-group")
+
+        refire_alert = Alert(
+            status="firing",
+            labels={"alertname": "TestAlert"},
+            startsAt=datetime.now(),
+        )
+        result = await manager.should_send(refire_alert, "test-group")
+        assert result is True
+
+
 class TestCommonLabelsComputation:
     def test_compute_common_labels_all_same(self):
         config = Config(settings=Settings())
@@ -741,137 +844,3 @@ class TestCommonLabelsComputation:
 
         common = processor._compute_common_annotations([])
         assert common == {}
-
-
-def test_group_model_with_deduplication_window():
-    from src.models import Group, MatchRule, MatchType
-
-    group = Group(
-        name="test-group",
-        destinations=["slack"],
-        match=[MatchRule(type=MatchType.ALWAYS_MATCH)],
-        group_by=["alertname"],
-        deduplication_window=3600,
-    )
-
-    assert group.deduplication_window == 3600
-    assert group.name == "test-group"
-
-
-def test_group_deduplication_window_negative_raises_error():
-    from src.models import Group, MatchRule, MatchType
-    import pytest
-
-    with pytest.raises(ValueError, match="deduplication_window must be >= 0"):
-        Group(
-            name="test-group",
-            destinations=["slack"],
-            match=[MatchRule(type=MatchType.ALWAYS_MATCH)],
-            deduplication_window=-1,
-        )
-
-
-@pytest.mark.asyncio
-async def test_should_send_group_with_deduplication_window():
-    import time
-    from src.models import Alert, Config, Settings
-    from src.state import StateManager
-    from src.fingerprint import FingerprintStrategy
-
-    config = Config(settings=Settings(fingerprint_strategy=FingerprintStrategy.AUTO))
-    state_mgr = StateManager(config)
-
-    alert1 = Alert(
-        status="firing",
-        labels={"alertname": "TestAlert", "severity": "critical"},
-        startsAt=datetime.now(),
-        fingerprint="fp1",
-    )
-    alert2 = Alert(
-        status="firing",
-        labels={"alertname": "TestAlert", "severity": "warning"},
-        startsAt=datetime.now(),
-        fingerprint="fp2",
-    )
-
-    result1 = await state_mgr.should_send_group(
-        [alert1, alert2], "alertname=TestAlert", "test-group", deduplication_window=0
-    )
-    assert result1 is True
-
-    result2 = await state_mgr.should_send_group(
-        [alert1, alert2], "alertname=TestAlert", "test-group", deduplication_window=0
-    )
-    assert result2 is False
-
-    time.sleep(2)
-
-    result3 = await state_mgr.should_send_group(
-        [alert1, alert2], "alertname=TestAlert", "test-group", deduplication_window=0
-    )
-    assert result3 is False
-
-
-@pytest.mark.asyncio
-async def test_should_send_group_with_one_second_window():
-    import time
-    from src.models import Alert, Config, Settings
-    from src.state import StateManager
-    from src.fingerprint import FingerprintStrategy
-
-    config = Config(settings=Settings(fingerprint_strategy=FingerprintStrategy.AUTO))
-    state_mgr = StateManager(config)
-
-    alert = Alert(
-        status="firing",
-        labels={"alertname": "TestAlert"},
-        startsAt=datetime.now(),
-        fingerprint="fp1",
-    )
-
-    result1 = await state_mgr.should_send_group(
-        [alert], "alertname=TestAlert", "test-group", deduplication_window=1
-    )
-    assert result1 is True
-
-    result2 = await state_mgr.should_send_group(
-        [alert], "alertname=TestAlert", "test-group", deduplication_window=1
-    )
-    assert result2 is False
-
-    time.sleep(1.1)
-
-    result3 = await state_mgr.should_send_group(
-        [alert], "alertname=TestAlert", "test-group", deduplication_window=1
-    )
-    assert result3 is True
-
-
-@pytest.mark.asyncio
-async def test_should_send_group_with_zero_window_never_resends():
-    import time
-    from src.models import Alert, Config, Settings
-    from src.state import StateManager
-    from src.fingerprint import FingerprintStrategy
-
-    config = Config(settings=Settings(fingerprint_strategy=FingerprintStrategy.AUTO))
-    state_mgr = StateManager(config)
-
-    alert = Alert(
-        status="firing",
-        labels={"alertname": "TestAlert"},
-        startsAt=datetime.now(),
-        fingerprint="fp1",
-    )
-
-    result1 = await state_mgr.should_send_group(
-        [alert], "alertname=TestAlert", "test-group", deduplication_window=0
-    )
-    assert result1 is True
-
-    time.sleep(0.5)
-
-    result2 = await state_mgr.should_send_group(
-        [alert], "alertname=TestAlert", "test-group", deduplication_window=0
-    )
-    assert result2 is False

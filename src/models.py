@@ -18,7 +18,6 @@ class Settings(BaseModel):
     redis_url: Optional[str] = None
     redis_failure_threshold: int = 3
     redis_recovery_timeout: int = 60
-    replay_queue_size: int = 1000
 
 
 class TemplateConfig(BaseModel):
@@ -97,16 +96,6 @@ class Group(BaseModel):
     filters: list[MatchRule] = Field(default_factory=list)
     match: list[MatchRule]
     group_by: list[str] = Field(default_factory=list)
-    deduplicate: bool = True
-    deduplication_window: int = 0
-
-    @model_validator(mode="after")
-    def validate_deduplication_window(self):
-        if self.deduplication_window < 0:
-            raise ValueError(
-                f"Group '{self.name}' deduplication_window must be >= 0, got {self.deduplication_window}"
-            )
-        return self
 
 
 class Config(BaseModel):

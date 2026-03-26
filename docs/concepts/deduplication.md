@@ -21,11 +21,10 @@ Deduplication ensures that you don't receive multiple notifications for the same
 │  1. Alertmanager sends firing alert → Hermes receives it        │
 │  2. Hermes computes fingerprint (alert identity)                │
 │  3. Hermes checks if state exists for this fingerprint+group    │
-│  4. No state exists? → Save state, send notification           │
-│  5. State exists with status="firing"? → Skip (duplicate)      │
-│  6. State exists with status="resolved"? → Update state, send  │
-│  7. Alertmanager sends resolved alert → Update state, send      │
-│  8. State expires after TTL → Forget alert                      │
+│  4. No state exists? → Store state with TTL, send notification  │
+│  5. State exists? → Skip (duplicate)                            │
+│  6. Alertmanager sends resolved alert → Delete state, send     │
+│  7. State expires after TTL → Forget alert                      │
 └────────────────────────────────────────────────────────────────┘
 ```
 
@@ -33,23 +32,64 @@ Deduplication ensures that you don't receive multiple notifications for the same
 
 ```
 Time 00:00 - Alertmanager: firing (HighMemory, pod=web-1)
-         → Hermes: No state, saves state, sends notification
+         → Hermes: No state, stores state, sends notification
          → You receive: "HighMemory: web-1 is at 85%"
 
 Time 00:30 - Alertmanager: firing (HighMemory, pod=web-1)
-         → Hermes: State exists (firing), skips
+         → Hermes: State exists, skips
          → You receive: nothing (duplicate)
 
 Time 01:00 - Alertmanager: firing (HighMemory, pod=web-1)
-         → Hermes: State exists (firing), skips
+         → Hermes: State exists, skips
          → You receive: nothing (duplicate)
 
 Time 01:30 - Alertmanager: resolved (HighMemory, pod=web-1)
-         → Hermes: Updates state to resolved, sends notification
+         → Hermes: Deletes state, sends notification
          → You receive: "HighMemory: web-1 is resolved"
 
-Time 06:00 - State expires (TTL = 300s = 5min)
+Time 01:35 - Alertmanager: firing (HighMemory, pod=web-1)  # Alert fires again
+         → Hermes: No state (was deleted), stores state, sends notification
+         → You receive: "HighMemory: web-1 is at 90%"
+
+Time 06:35 - State expires (TTL = 300s = 5min) if not refreshed
          → Hermes: Forgets the alert
+```
+
+## Configuration
+
+### Single Setting
+
+Deduplication is controlled by a single setting:
+
+```yaml
+settings:
+  deduplication_ttl: 3600  # 1 hour
+```
+
+| Value | Behavior |
+|-------|----------|
+| `0` | Disabled - send every alert |
+| `> 0` | Deduplicate within TTL window (seconds) |
+
+### Choosing TTL Values
+
+| Scenario | Recommended TTL | Reason |
+|---------|----------------|--------|
+| Development | 60-120 seconds | Quick feedback, forget old alerts fast |
+| Production | 300-600 seconds (5-10 min) | Balance between noise and memory |
+| Long-running alerts | 1800-3600 seconds (30-60 min) | For alerts that stay firing for hours |
+
+**Too short:** Alerts may be re-sent unexpectedly if Alertmanager reports slowly.
+
+**Too long:** Higher memory usage, longer state retention.
+
+### Disabling Deduplication
+
+Set `deduplication_ttl` to `0` to send every alert without state tracking:
+
+```yaml
+settings:
+  deduplication_ttl: 0
 ```
 
 ## Fingerprinting
@@ -197,120 +237,6 @@ Alert: `namespace=production, severity=critical, alertname=DatabaseDown`
 
 Result: Alert sent to Team A and On-call separately, with per-group deduplication.
 
-## Deduplication TTL (Time to Live)
-
-TTL determines how long Hermes remembers an alert's state.
-
-```yaml
-settings:
-  deduplication_ttl: 300  # 5 minutes
-```
-
-### TTL Behavior
-
-- When alert is first received: State is created with TTL
-- State is refreshed on each alert receipt (while firing)
-- When alert resolves: State is marked resolved
-- State is deleted after TTL expires
-
-### TTL vs Alert Lifetime
-
-```
-Alert: firing (continuously reported by Alertmanager)
-
-Time 00:00 - First alert: State created, TTL=300s
-Time 00:30 - Second alert: State refreshed, TTL=300s (reset)
-Time 01:00 - Third alert: State refreshed, TTL=300s (reset)
-Time 01:30 - Resolved: State marked resolved
-Time 01:30 + 300s = 06:30 - State expires (TTL reached)
-```
-
-### Choosing TTL Values
-
-| Scenario | Recommended TTL | Reason |
-|---------|----------------|--------|
-| Development | 60-120 seconds | Quick feedback, forget old alerts fast |
-| Production | 300-600 seconds (5-10 min) | Balance between noise and memory |
-| Long-running alerts | 1800-3600 seconds (30-60 min) | For alerts that stay firing for hours |
-
-**Too short:** Alerts may be re-sent unexpectedly if Alertmanager reports slowly.
-
-**Too long:** Higher memory usage, longer state retention.
-
-## Deduplication Window (for Grouped Alerts)
-
-The `deduplication_window` controls how often to resend **grouped** alerts that are continuously firing.
-
-```yaml
-groups:
-  - name: critical-alerts
-    destinations: [slack-alerts]
-    group_by: [alertname, cluster]
-    deduplication_window: 3600  # Resend every hour
-    match:
-      - type: label_equals
-        label: severity
-        values: [critical]
-```
-
-### Window Behavior
-
-| Value | Behavior |
-|-------|----------|
-| `0` | Never resend (default) - send once, wait for resolve |
-| `> 0` | Resend every N seconds while firing |
-
-### When to Use Deduplication Window
-
-**Use with critical alerts:**
-- Critical alerts need ongoing visibility
-- People may miss the first notification
-- Periodic reminders are helpful
-
-**Example:**
-```yaml
-groups:
-  - name: critical-database-alerts
-    destinations: [pagerduty, slack-oncall]
-    group_by: [alertname, cluster]
-    deduplication_window: 3600  # Remind every hour
-    match:
-      - type: label_equals
-        label: severity
-        values: [critical]
-```
-
-**Don't use with non-critical alerts:**
-- Warning alerts don't need reminders
-- Use `deduplication_window: 0` (default)
-
-**Example:**
-```yaml
-groups:
-  - name: warning-alerts
-    destinations: [slack-alerts]
-    group_by: [alertname, cluster]
-    deduplication_window: 0  # Never resend
-    match:
-      - type: label_equals
-        label: severity
-        values: [warning]
-```
-
-### Window Timeline
-
-```
-deduplication_window: 3600 (1 hour)
-
-Time 00:00 - First grouped alert: Send notification
-Time 00:30 - Second grouped alert: Skip (duplicate)
-Time 01:00 - Third grouped alert: Send notification (window elapsed)
-Time 01:30 - Fourth grouped alert: Skip (duplicate)
-Time 02:00 - Fifth grouped alert: Send notification (window elapsed)
-```
-
-The window resets after each send, ensuring periodic reminders.
-
 ## State Management
 
 ### In-Memory State (Default)
@@ -361,10 +287,6 @@ export REDIS_URL=redis://redis:6379/0
 - Production deployment
 - Need to avoid duplicate notifications
 
-**Don't use when:**
-- Single replica (unnecessary complexity)
-- Can tolerate Redis outages
-
 See [State Management](state-management.md) for more details on Redis configuration.
 
 ## Troubleshooting
@@ -409,6 +331,10 @@ See [State Management](state-management.md) for more details on Redis configurat
    - If using `custom` strategy, alerts with different labels have different fingerprints
    - Try `auto` strategy
 
+3. **Deduplication too aggressive:**
+   - State may be persisting too long
+   - Check `deduplication_ttl` value
+
 ### State Not Clearing
 
 **Symptom:** High memory usage, old alerts remembered.
@@ -417,17 +343,6 @@ See [State Management](state-management.md) for more details on Redis configurat
 ```yaml
 settings:
   deduplication_ttl: 300  # Reduce from default if needed
-```
-
-### Grouped Alerts Not Resending
-
-**Symptom:** Critical grouped alerts not sending periodic reminders.
-
-**Solution:**
-```yaml
-groups:
-  - name: critical-alerts
-    deduplication_window: 3600  # Set > 0 to enable
 ```
 
 ## Metrics
@@ -477,29 +392,7 @@ settings:
   deduplication_ttl: 1800
 ```
 
-### 3. Use Window for Critical Alerts
-
-```yaml
-# ✅ Good: Remind about critical alerts
-groups:
-  - name: critical
-    deduplication_window: 3600
-    match:
-      - type: label_equals
-        label: severity
-        values: [critical]
-
-# ✅ Good: No reminders for warnings
-groups:
-  - name: warning
-    deduplication_window: 0  # or omit (defaults to 0)
-    match:
-      - type: label_equals
-        label: severity
-        values: [warning]
-```
-
-### 4. Use Redis for Multi-Replica
+### 3. Use Redis for Multi-Replica
 
 ```yaml
 # ✅ Multi-replica: Use Redis
@@ -511,5 +404,5 @@ export REDIS_URL=redis://redis:6379/0
 ## Next Steps
 
 - [State Management](state-management.md) - Redis configuration and deployment
-- [Group Alerts Guide](../tutorials/group-alerts.md) - Grouped alerts and deduplication windows
+- [Group Alerts Guide](../tutorials/group-alerts.md) - Grouped alerts configuration
 - [Architecture](../architecture.md) - Complete system architecture

@@ -331,40 +331,6 @@ Don't assume labels exist:
 {{ alerts[0].labels.pod }}  # May not exist
 ```
 
-## Deduplication Window
-
-Configure `deduplication_window` to resend grouped alerts periodically:
-
-```yaml
-groups:
-  - name: critical-alerts
-    destinations: [slack-alerts]
-    group_by: [alertname, cluster]
-    deduplication_window: 3600  # Resend every hour
-    match:
-      - type: label_equals
-        label: severity
-        values: [critical]
-
-  - name: warning-alerts
-    destinations: [slack-alerts]
-    group_by: [alertname, cluster]
-    deduplication_window: 0  # Never resend
-    match:
-      - type: label_equals
-        label: severity
-        values: [warning]
-```
-
-**Window Values:**
-- `0`: Never resend (default)
-- `> 0`: Resend every N seconds while firing
-
-**Use Cases:**
-- Critical alerts: Remind periodically (e.g., every hour)
-- Warning alerts: Send once, wait for resolve
-- Long-running alerts: Ensure ongoing visibility
-
 ## Complete Example
 
 ```yaml
@@ -403,7 +369,6 @@ groups:
   - name: production-alerts
     destinations: [slack-grouped]
     group_by: [alertname, cluster]
-    deduplication_window: 0
     match:
       - type: label_equals
         label: environment
@@ -412,7 +377,6 @@ groups:
   - name: critical-alerts
     destinations: [slack-grouped]
     group_by: [alertname, cluster]
-    deduplication_window: 3600
     match:
       - type: label_equals
         label: severity

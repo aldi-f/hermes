@@ -125,19 +125,19 @@ Need multi-replica?
 ### How It Works
 
 1. Alert received → State created in RAM
-2. State refreshed on each alert receipt
-3. State marked resolved when alert resolves
-4. State deleted after TTL expires
+2. State checked on each subsequent alert
+3. State deleted when alert resolves
+4. Background task cleans up expired entries every 60 seconds
 
 ### State Lifecycle
 
 ```
 Time 00:00 - Alert: firing → State created in RAM
-Time 00:30 - Alert: firing → State refreshed (TTL reset to 300s)
-Time 01:00 - Alert: firing → State refreshed (TTL reset to 300s)
-Time 01:30 - Alert: resolved → State marked resolved
-Time 01:35 - Alert: firing → State updated to firing
-Time 06:35 - State expires (TTL reached) → State deleted
+Time 00:30 - Alert: firing → State exists, skip (duplicate)
+Time 01:00 - Alert: firing → State exists, skip (duplicate)
+Time 01:30 - Alert: resolved → State deleted, send resolved notification
+Time 01:35 - Alert: firing → No state, create state, send notification
+Time 06:35 - State expires (TTL reached) → Cleaned up by background task
 ```
 
 ### Memory Usage
@@ -160,7 +160,6 @@ When Hermes restarts:
 - This is expected behavior
 
 **To minimize restart impact:**
-- Reduce `deduplication_ttl` (alerts forgotten faster)
 - Use Redis state (persists across restarts)
 
 ## Redis State Details
@@ -203,42 +202,42 @@ redis+cluster://node1:6379,node2:6379/0
 
 ### How It Works
 
-1. Alert received → State created in Redis
+1. Alert received → State created in Redis with TTL
 2. State read/written to Redis on each alert
-3. State marked resolved when alert resolves
-4. State expires after TTL (Redis TTL)
-5. State shared across all Hermes replicas
+3. State deleted when alert resolves
+4. State expires automatically via Redis TTL
 
 ### State Lifecycle
 
 ```
 Time 00:00 - Alert: firing → State written to Redis (TTL=300s)
-Time 00:30 - Alert: firing → State updated in Redis (TTL refreshed)
-Time 01:00 - Alert: firing → State updated in Redis (TTL refreshed)
-Time 01:30 - Alert: resolved → State updated in Redis (status=resolved)
-Time 01:35 - Alert: firing → State updated in Redis (status=firing)
-Time 06:35 - Redis expires state (TTL reached) → State deleted
+Time 00:30 - Alert: firing → State exists, skip (duplicate)
+Time 01:00 - Alert: firing → State exists, skip (duplicate)
+Time 01:30 - Alert: resolved → State deleted from Redis
+Time 01:35 - Alert: firing → No state, create state, send notification
+Time 06:35 - Redis expires state (TTL reached) → Auto-deleted
 ```
 
 ### Redis Commands Used
 
 Hermes uses these Redis commands:
-- `SET` - Create/update alert state
 - `GET` - Read alert state
 - `SETEX` - Set with TTL
 - `DEL` - Delete state
-- `TTL` - Check remaining TTL
+- `SCAN` - List active alerts (for metrics)
 
 **State key format:**
 ```
-hermes:alert:{fingerprint}:{group}
+hermes:alert:{group_name}:{fingerprint}
 ```
 
 **State value (JSON):**
 ```json
 {
+  "fingerprint": "abc123",
+  "group_name": "team-a",
   "status": "firing",
-  "last_updated": "2024-01-01T00:00:00Z"
+  "last_seen": 1704067200.0
 }
 ```
 
@@ -262,7 +261,7 @@ hermes:alert:{fingerprint}:{group}
 **Single Redis Instance:**
 - Simple setup
 - Single point of failure
-- Hermes continues if Redis down (uses in-memory fallback)
+- Hermes continues if Redis down (fails open)
 
 **Redis Sentinel:**
 - Automatic failover
@@ -278,26 +277,6 @@ hermes:alert:{fingerprint}:{group}
 - Production: Redis Sentinel
 - Large scale: Redis Cluster
 - Small scale: Single instance (if you can tolerate brief outages)
-
-### Fallback Behavior
-
-When Redis is unavailable:
-
-1. Hermes detects Redis unavailability
-2. Falls back to in-memory state
-3. Queues writes to replay queue
-4. When Redis recovers, replays queued writes
-
-**Circuit Breaker:**
-- After 3 consecutive failures → OPEN state (stop trying Redis)
-- After 60 seconds → HALF_OPEN state (test Redis)
-- On success → CLOSED state (use Redis again)
-
-**Replay Queue:**
-- In-memory queue of writes
-- Max size: 1000 (configurable)
-- When full: oldest writes dropped
-- When Redis recovers: replay all writes
 
 ## Migration: In-Memory to Redis
 
@@ -342,20 +321,8 @@ curl http://hermes:8080/health
 {
   "status": "ok",
   "config_loaded": true,
-  "redis": "connected",
-  "queue_size": 0
+  "redis": "connected"
 }
-```
-
-### Step 5: Monitor
-
-```bash
-# Check Redis metrics
-curl http://hermes:9090/metrics | grep redis
-
-# Expected:
-spreader_redis_connected 1
-spreader_redis_queue_size 0
 ```
 
 ## Monitoring
@@ -371,39 +338,36 @@ curl http://hermes:8080/health
 {
   "status": "ok",
   "config_loaded": true,
-  "redis": "connected",  # or "disconnected" or "not_configured"
-  "queue_size": 0  # Replay queue size
+  "redis": "connected"  // or "disconnected" or "not_configured"
 }
 ```
 
 ### Metrics
 
 ```bash
-curl http://hermes:9090/metrics | grep -E "(redis|queue)"
+curl http://hermes:9090/metrics | grep -E "(redis|active)"
 ```
 
 **Key metrics:**
-- `spreader_redis_connected` - Redis connection status (0/1)
-- `spreader_redis_queue_size` - Replay queue size
-- `spreader_redis_write_attempts_total` - Total Redis write attempts
-- `spreader_redis_write_failures_total` - Total Redis write failures
+- `spreader_active_alerts{group}` - Active alerts per group
+- `spreader_alerts_deduplicated_total{group}` - Total deduplicated alerts
 
 ### Alerts
 
-Prometheus alerts for Redis:
+Prometheus alerts for state management:
 
 ```yaml
+- alert: HermesHighActiveAlerts
+  expr: sum(spreader_active_alerts) > 1000
+  for: 5m
+  annotations:
+    summary: "Hermes has many active alerts"
+
 - alert: HermesRedisDisconnected
   expr: spreader_redis_connected == 0
   for: 5m
   annotations:
     summary: "Hermes Redis is disconnected"
-
-- alert: HermesRedisQueueBackingUp
-  expr: spreader_redis_queue_size > 100
-  for: 5m
-  annotations:
-    summary: "Hermes Redis replay queue is backing up"
 ```
 
 ## Best Practices
@@ -455,13 +419,6 @@ settings:
   deduplication_ttl: 1800
 ```
 
-### 5. Plan for Redis Outages
-
-- Hermes continues if Redis down (uses in-memory)
-- Monitor `queue_size` metric
-- Alert on queue size > threshold
-- Investigate Redis outages quickly
-
 ## Troubleshooting
 
 ### Hermes Can't Connect to Redis
@@ -486,25 +443,6 @@ kubectl get deployment hermes -o yaml | grep REDIS_URL
 - Check network policies
 - Verify REDIS_URL format
 - Check Redis logs for errors
-
-### Queue Size Growing
-
-**Check:**
-```bash
-curl http://hermes:8080/health
-curl http://hermes:9090/metrics | grep queue_size
-```
-
-**Possible causes:**
-- Redis is down or slow
-- Network latency to Redis
-- High alert volume
-
-**Solution:**
-- Check Redis health
-- Increase Redis capacity
-- Reduce alert volume
-- Increase queue size (in config)
 
 ### Duplicates After Restart
 

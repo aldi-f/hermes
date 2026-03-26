@@ -92,7 +92,7 @@ For detailed configuration options, see:
 
 **Key Settings:**
 - `fingerprint_strategy`: `auto`, `alertmanager`, or `custom`
-- `deduplication_ttl`: Keep alert state for N seconds (default: 300)
+- `deduplication_ttl`: Deduplication window in seconds (0 = disabled, default: 300)
 - `metrics_port`: Prometheus metrics port (default: 9090)
 
 **Environment Variables:**
@@ -109,7 +109,7 @@ SLACK_WEBHOOK_URL=...        # Use ${VAR_NAME} in config
 |---------|-------------|------|
 | Match types | `label_equals`, `label_matches`, `label_contains`, etc. | [Routing](docs/concepts/routing-and-groups.md) |
 | Group alerts | Combine similar alerts with `group_by` | [Tutorial](docs/tutorials/group-alerts.md) |
-| Deduplication window | Resend grouped alerts every N seconds | [Deduplication](docs/concepts/deduplication.md) |
+| Deduplication | Control with `settings.deduplication_ttl` | [Deduplication](docs/concepts/deduplication.md) |
 | Templates | Jinja2 templates for Slack/Discord | [Templating](docs/concepts/templating.md) |
 | Multiple destinations | Send alerts to Slack + Discord | [Tutorial](docs/tutorials/multiple-destinations.md) |
 
