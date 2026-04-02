@@ -2,7 +2,15 @@ import os
 import pytest
 
 from src.config import _expand_env_vars
-from src.models import Destination, TemplateConfig
+from src.models import (
+    Destination,
+    SlackAttachmentStructured,
+    SlackBlockKitStructured,
+    DiscordEmbedStructured,
+    StructuredTemplate,
+    TemplateConfig,
+    TemplatePart,
+)
 
 
 class TestEnvVarExpansion:
@@ -66,7 +74,7 @@ class TestEnvVarExpansion:
 
 
 class TestSlackTemplateValidation:
-    def test_slack_with_template_only_valid(self):
+    def test_slack_with_raw_template_valid(self):
         destination = Destination(
             name="test-slack",
             type="slack",
@@ -75,24 +83,50 @@ class TestSlackTemplateValidation:
         )
         assert destination.name == "test-slack"
 
-    def test_slack_with_attachments_only_valid(self):
+    def test_slack_with_blockkit_structured_valid(self):
         destination = Destination(
             name="test-slack",
             type="slack",
             webhook_url="https://hooks.slack.com/test",
-            template=TemplateConfig(),
-            attachments_template=TemplateConfig(content='[{"color": "danger"}]'),
+            template=TemplateConfig(
+                structured=StructuredTemplate(
+                    blockkit=SlackBlockKitStructured(
+                        header=TemplatePart(content="Header"),
+                        body=TemplatePart(content="Body"),
+                    )
+                )
+            ),
         )
         assert destination.name == "test-slack"
 
-    def test_slack_with_both_templates_invalid(self):
+    def test_slack_with_attachment_structured_valid(self):
+        destination = Destination(
+            name="test-slack",
+            type="slack",
+            webhook_url="https://hooks.slack.com/test",
+            template=TemplateConfig(
+                structured=StructuredTemplate(
+                    attachment=SlackAttachmentStructured(
+                        color="danger",
+                        body=TemplatePart(content="Body"),
+                    )
+                )
+            ),
+        )
+        assert destination.name == "test-slack"
+
+    def test_slack_with_raw_and_structured_invalid(self):
         with pytest.raises(ValueError) as exc:
             Destination(
                 name="test-slack",
                 type="slack",
                 webhook_url="https://hooks.slack.com/test",
-                template=TemplateConfig(content='{"blocks": []}'),
-                attachments_template=TemplateConfig(content='[{"color": "danger"}]'),
+                template=TemplateConfig(
+                    content='{"blocks": []}',
+                    structured=StructuredTemplate(
+                        blockkit=SlackBlockKitStructured(body=TemplatePart(content="Body"))
+                    ),
+                ),
             )
         assert "cannot have both" in str(exc.value).lower()
 
@@ -106,16 +140,52 @@ class TestSlackTemplateValidation:
             )
         assert "must have either" in str(exc.value).lower()
 
-    def test_non_slack_with_attachments_invalid(self):
+    def test_slack_with_multiple_structured_types_invalid(self):
+        with pytest.raises(ValueError) as exc:
+            Destination(
+                name="test-slack",
+                type="slack",
+                webhook_url="https://hooks.slack.com/test",
+                template=TemplateConfig(
+                    structured=StructuredTemplate(
+                        blockkit=SlackBlockKitStructured(body=TemplatePart(content="Body")),
+                        attachment=SlackAttachmentStructured(
+                            color="danger", body=TemplatePart(content="Body")
+                        ),
+                    )
+                ),
+            )
+        assert "exactly one" in str(exc.value).lower()
+
+    def test_non_slack_with_blockkit_invalid(self):
         with pytest.raises(ValueError) as exc:
             Destination(
                 name="test-discord",
                 type="discord",
                 webhook_url="https://discord.webhook/test",
-                template=TemplateConfig(content='{"embeds": []}'),
-                attachments_template=TemplateConfig(content='[{"color": "danger"}]'),
+                template=TemplateConfig(
+                    structured=StructuredTemplate(
+                        blockkit=SlackBlockKitStructured(body=TemplatePart(content="Body"))
+                    )
+                ),
             )
-        assert "does not support 'attachments_template'" in str(exc.value).lower()
+        assert "must have 'embed'" in str(exc.value).lower()
+
+    def test_discord_with_embed_structured_valid(self):
+        destination = Destination(
+            name="test-discord",
+            type="discord",
+            webhook_url="https://discord.webhook/test",
+            template=TemplateConfig(
+                structured=StructuredTemplate(
+                    embed=DiscordEmbedStructured(
+                        header=TemplatePart(content="Header"),
+                        body=TemplatePart(content="Body"),
+                    )
+                )
+            ),
+        )
+        assert destination.name == "test-discord"
 
     def test_non_slack_with_template_only_valid(self):
         destination = Destination(

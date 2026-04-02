@@ -20,9 +20,37 @@ class Settings(BaseModel):
     redis_recovery_timeout: int = 60
 
 
+class TemplatePart(BaseModel):
+    content: str
+
+
+class SlackBlockKitStructured(BaseModel):
+    header: Optional[TemplatePart] = None
+    body: Optional[TemplatePart] = None
+    footer: Optional[TemplatePart] = None
+
+
+class SlackAttachmentStructured(BaseModel):
+    color: str
+    body: TemplatePart
+
+
+class DiscordEmbedStructured(BaseModel):
+    header: Optional[TemplatePart] = None
+    body: Optional[TemplatePart] = None
+    footer: Optional[TemplatePart] = None
+
+
+class StructuredTemplate(BaseModel):
+    blockkit: Optional[SlackBlockKitStructured] = None
+    attachment: Optional[SlackAttachmentStructured] = None
+    embed: Optional[DiscordEmbedStructured] = None
+
+
 class TemplateConfig(BaseModel):
     path: Optional[str] = None
     content: Optional[str] = None
+    structured: Optional[StructuredTemplate] = None
 
 
 class Destination(BaseModel):
@@ -30,38 +58,38 @@ class Destination(BaseModel):
     type: str
     webhook_url: Optional[str] = None
     template: TemplateConfig = Field(default_factory=TemplateConfig)
-    attachments_template: Optional[TemplateConfig] = None
 
     @model_validator(mode="after")
-    def validate_template_exclusivity(self):
-        if self.type.lower() == "slack":
-            has_template = self.template.content is not None or self.template.path is not None
-            has_attachments = self.attachments_template is not None and (
-                self.attachments_template.content is not None
-                or self.attachments_template.path is not None
+    def validate_template(self):
+        has_raw = self.template.content is not None or self.template.path is not None
+        has_structured = self.template.structured is not None
+
+        if has_raw and has_structured:
+            raise ValueError(
+                f"Destination '{self.name}' cannot have both 'raw' and 'structured' in template. "
+                "Specify only one."
             )
 
-            if has_template and has_attachments:
-                raise ValueError(
-                    f"Slack destination '{self.name}' cannot have both 'template' and 'attachments_template'. "
-                    "Specify only one."
-                )
+        if not has_raw and not has_structured:
+            raise ValueError(
+                f"Destination '{self.name}' must have either 'raw' or 'structured' in template."
+            )
 
-            if not has_template and not has_attachments:
-                raise ValueError(
-                    f"Slack destination '{self.name}' must have either 'template' or 'attachments_template'."
-                )
+        if has_structured:
+            st = self.template.structured
+            if self.type.lower() == "slack":
+                structured_count = sum(1 for x in [st.blockkit, st.attachment] if x is not None)
+                if structured_count != 1:
+                    raise ValueError(
+                        f"Slack destination '{self.name}' must have exactly one of 'blockkit' or 'attachment' in structured template."
+                    )
+            elif self.type.lower() == "discord":
+                if st.embed is None:
+                    raise ValueError(
+                        f"Discord destination '{self.name}' must have 'embed' in structured template."
+                    )
         elif self.type.lower() == "stdout":
-            has_template = self.template.content is not None or self.template.path is not None
-            if not has_template:
-                raise ValueError(
-                    f"Stdout destination '{self.name}' must have 'template' configured."
-                )
-        else:
-            if self.attachments_template is not None:
-                raise ValueError(
-                    f"Destination type '{self.type}' does not support 'attachments_template'. Only Slack supports this field."
-                )
+            raise ValueError(f"Stdout destination '{self.name}' must have a template configured.")
 
         return self
 

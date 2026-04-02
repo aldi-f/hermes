@@ -95,6 +95,40 @@ Within `alerts` iteration, each alert object has:
 {% endif %}
 ```
 
+## Environment Variables
+
+You can access environment variables in templates using the `env` namespace:
+
+```jinja2
+{{ env.RUNBOOK_URL }}
+{{ env.DOCS_URL }}
+{{ env.SOME_ENV_VAR }}
+```
+
+**Example with hyperlinks:**
+
+```jinja2
+# Slack (link to runbook with alert name)
+<{{ env.RUNBOOK_URL }}#{{ labels.alertname }}|{{ labels.alertname }}>
+
+# Discord (markdown link)
+[{{ labels.alertname }}]({{ env.DOCS_URL }}#{{ labels.alertname }})
+```
+
+**Example configuration:**
+
+```yaml
+destinations:
+  - name: slack-with-runbook
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    template:
+      structured:
+        blockkit:
+          body:
+            content: "*Alert:* <{{ env.RUNBOOK_URL }}#{{ labels.alertname }}|{{ labels.alertname }}>\n{{ annotations.description }}"
+```
+
 ## Slack Templates
 
 ### Simple Text Format
@@ -221,6 +255,105 @@ groups:
           }
         ]}
 ```
+
+## Structured Templates
+
+Structured templates provide a simpler, more maintainable way to define message templates without writing raw JSON. They automatically handle body truncation to respect platform limits.
+
+**Key features:**
+- Define templates using named parts (header, body, footer) instead of raw JSON
+- Automatic body truncation at platform limits
+- Environment variable support via `{{ env.VAR_NAME }}`
+- Body truncation appends "... (truncated)" when content exceeds limits
+
+**Platform limits:**
+- Slack body (section text): 4000 characters
+- Slack header block: 150 characters
+- Discord description: 4096 characters
+
+### Structured Block Kit (Slack)
+
+For Slack Block Kit format, use `structured.blockkit`:
+
+```yaml
+destinations:
+  - name: slack-structured
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    template:
+      structured:
+        blockkit:
+          header:
+            content: "{% if status == 'firing' %}🚨 Alert Firing ({{ alerts | length }}){% else %}✅ Resolved ({{ alerts | length }}){% endif %}"
+          body:
+            content: "*Alert:* `{{ common_labels.alertname | default('N/A') }}` - {{ common_labels.severity | default('unknown') }}\n*Cluster:* `{{ common_labels.cluster | default('N/A') }}`\n*Summary:* {{ common_annotations.summary | default('No summary') }}\n*Messages:*\n{% for alert in alerts %}• <{{ env.RUNBOOK_URL }}#{{ alert.labels.alertname }}|{{ alert.annotations.description | default('No description') }}>\n{% endfor %}"
+          footer:
+            content: "Group: {{ group_name }}"
+```
+
+**Block Kit parts:**
+- `header`: Maps to Slack `header` block (plain_text, max 150 chars)
+- `body`: Maps to Slack `section` block with `mrkdwn` text (max 4000 chars)
+- `footer`: Maps to Slack `context` block with `mrkdwn` text
+
+### Structured Attachment (Slack)
+
+For Slack legacy attachment format, use `structured.attachment`:
+
+```yaml
+destinations:
+  - name: slack-attachment
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    template:
+      structured:
+        attachment:
+          color: "{% if status == 'firing' %}danger{% else %}good{% endif %}"
+          body:
+            content: "{% if status == 'firing' %}🚨 Alert Firing ({{ alerts | length }}){% else %}✅ Resolved ({{ alerts | length }}){% endif %}\n*Alert:* `{{ common_labels.severity | default('unknown') }}` - *{{ common_labels.alertname | default('N/A') }}*\n*Cluster:* `{{ common_labels.cluster | default('N/A') }}`\n*Summary:* {{ common_annotations.summary | default('No summary') }}\n*Messages:*\n{% for alert in alerts %}• <{{ env.RUNBOOK_URL }}#{{ alert.labels.alertname }}|{{ alert.annotations.description | default('No description') }}>\n{% endfor %}"
+```
+
+**Attachment parts:**
+- `color`: Required. The color strip shown on the left (e.g., `danger`, `good`, `#FF0000`)
+- `body`: Required. The main text content (max 4000 chars)
+
+### Structured Embed (Discord)
+
+For Discord embed format, use `structured.embed`:
+
+```yaml
+destinations:
+  - name: discord-structured
+    type: discord
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
+    template:
+      structured:
+        embed:
+          header:
+            content: "{% if status == 'firing' %}🚨 Alert Firing ({{ alerts | length }}){% else %}✅ Resolved ({{ alerts | length }}){% endif %}"
+          body:
+            content: "*Alert:* `{{ common_labels.alertname | default('N/A') }}` - {{ common_labels.severity | default('unknown') }}\n*Cluster:* `{{ common_labels.cluster | default('N/A') }}`\n*Summary:* {{ common_annotations.summary | default('No summary') }}\n*Messages:*\n{% for alert in alerts %}• [{{ alert.annotations.description | default('No description') }}]({{ env.RUNBOOK_URL }}#{{ alert.labels.alertname }})\n{% endfor %}"
+          footer:
+            content: "Group: {{ group_name }}"
+```
+
+**Embed parts:**
+- `header`: Maps to embed `title` (no character limit)
+- `body`: Maps to embed `description` (max 4096 chars)
+- `footer`: Maps to embed `footer` text
+
+### Choosing Raw vs Structured
+
+**Use raw mode when you need:**
+- Full control over the JSON structure
+- Advanced Block Kit features (buttons, date pickers, etc.)
+- Custom field arrangements
+
+**Use structured mode when you want:**
+- Simpler, more readable configuration
+- Automatic body truncation
+- Environment variable substitution
+- Cleaner separation of header/body/footer
 
 ## Discord Templates
 
@@ -586,6 +719,26 @@ Jinja2 templates must produce valid JSON:
 1. Verify Block Kit JSON structure
 2. Check Slack API documentation for block types
 3. Test template in Slack Block Kit Builder
+
+### Content Truncated in Structured Templates
+
+Structured templates automatically truncate body content that exceeds platform limits:
+
+- Slack body: 4000 characters
+- Slack header: 150 characters
+- Discord description: 4096 characters
+
+If you see "... (truncated)" in your messages, the content exceeded the limit. To control what gets truncated:
+
+1. Move less important content to footer (not truncated)
+2. Use `{% if ... %}` conditionals to show only key information
+3. Use `{{ content | truncate(3000) }}` filter in body to pre-truncate
+
+```jinja2
+# Example: Pre-truncate long descriptions
+body:
+  content: "{{ annotations.description | default('No description') | truncate(3000) }}"
+```
 
 ## Next Steps
 

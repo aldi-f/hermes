@@ -4,7 +4,8 @@ settings:
   metrics_port: 9090
 
 destinations:
-  - name: slack-team-a
+  # Raw Block Kit example
+  - name: slack-team-a-raw
     type: slack
     webhook_url: "${SLACK_WEBHOOK_URL}"
     template:
@@ -48,25 +49,33 @@ destinations:
           ]
         }
 
-  # Example using legacy attachments format (alternative to block kit above)
-  # Uncomment to use this instead of the block kit format
-  # - name: slack-team-a-legacy
-  #   type: slack
-  #   webhook_url: "${SLACK_WEBHOOK_URL}"
-  #   attachments_template:
-  #     content: |
-  #       [
-  #         {
-  #           "color": "danger" if status == 'firing' else "good",
-  #           "fields": [
-  #             {"title": "Group", "value": "{{ group_name }}", "short": true},
-  #             {"title": "Status", "value": "{{ status }}", "short": true}
-  #           ],
-  #           "text": "*Labels:*\n{% for key, value in labels.items() %}`{{ key }}`: `{{ value }}`\n{% endfor %}\n\n*Annotations:*\n{% for key, value in annotations.items() %}`{{ key }}`: {{ value }}\n{% endfor %}"
-  #         }
-  #       ]
+  # Structured Block Kit example (with body truncation and env var)
+  - name: slack-team-a-structured
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    template:
+      structured:
+        blockkit:
+          header:
+            content: "{% if status == 'firing' %}🚨 Alert Firing ({{ alerts | length }}){% else %}✅ Alert Resolved ({{ alerts | length }}){% endif %}"
+          body:
+            content: "*Alert:* `{{ common_labels.alertname | default('N/A') }}` - {{ common_labels.severity | default('unknown') }}\n*Cluster:* `{{ common_labels.cluster | default('N/A') }}`\n*Summary:* {{ common_annotations.summary | default('No summary') }}\n*Messages:*\n{% for alert in alerts %}• <{{ env.RUNBOOK_URL }}#{{ alert.labels.alertname }}|{{ alert.annotations.description | default('No description') }}>\n{% endfor %}"
+          footer:
+            content: "Group: {{ group_name }}"
 
-  - name: discord-alerts
+  # Structured Attachment example (legacy Slack format with color)
+  - name: slack-team-a-attachment
+    type: slack
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    template:
+      structured:
+        attachment:
+          color: "{% if status == 'firing' %}danger{% else %}good{% endif %}"
+          body:
+            content: "{% if status == 'firing' %}🚨 Alert Firing ({{ alerts | length }}){% else %}✅ Alert Resolved ({{ alerts | length }}){% endif %}\n*Alert:* `{{ common_labels.severity | default('unknown') }}` - *{{ common_labels.alertname | default('N/A') }}*\n*Cluster:* `{{ common_labels.cluster | default('N/A') }}`\n*Summary:* {{ common_annotations.summary | default('No summary') }}\n*Messages:*\n{% for alert in alerts %}• <{{ env.RUNBOOK_URL }}#{{ alert.labels.alertname }}|{{ alert.annotations.description | default('No description') }}>\n{% endfor %}"
+
+  # Raw Discord example
+  - name: discord-alerts-raw
     type: discord
     webhook_url: "${DISCORD_WEBHOOK_URL}"
     template:
@@ -86,6 +95,21 @@ destinations:
           ]
         }
 
+  # Structured Discord Embed example
+  - name: discord-alerts-structured
+    type: discord
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
+    template:
+      structured:
+        embed:
+          header:
+            content: "{% if status == 'firing' %}🚨 Alert Firing ({{ alerts | length }}){% else %}✅ Alert Resolved ({{ alerts | length }}){% endif %}"
+          body:
+            content: "*Alert:* `{{ common_labels.alertname | default('N/A') }}` - {{ common_labels.severity | default('unknown') }}\n*Cluster:* `{{ common_labels.cluster | default('N/A') }}`\n*Summary:* {{ common_annotations.summary | default('No summary') }}\n*Messages:*\n{% for alert in alerts %}• [{{ alert.annotations.description | default('No description') }}]({{ env.RUNBOOK_URL }}#{{ alert.labels.alertname }})\n{% endfor %}"
+          footer:
+            content: "Group: {{ group_name }}"
+
+  # Stdout example (still uses raw content)
   - name: stdout-debug
     type: stdout
     template:
@@ -101,14 +125,14 @@ destinations:
 groups:
   - name: team-a
     destinations:
-      - slack-team-a
+      - slack-team-a-structured
     filters:
       - type: label_not_equals
         label: cluster
-        values: [dev]  # Exclude alerts from dev cluster
+        values: [dev]
       - type: label_not_equals
         label: tenant
-        values: [dev]  # Exclude alerts with tenant=dev
+        values: [dev]
     match:
       - type: label_equals
         label: namespace
@@ -122,7 +146,7 @@ groups:
 
   - name: team-b
     destinations:
-      - slack-team-a
+      - slack-team-a-structured
     match:
       - type: label_equals
         label: namespace
