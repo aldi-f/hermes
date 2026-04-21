@@ -13,9 +13,7 @@ def compute_fingerprint(labels: Dict[str, str]) -> str:
 
 
 def get_fingerprint(
-    alert: Alert,
-    strategy: FingerprintStrategy,
-    metrics: Optional[object] = None
+    alert: Alert, strategy: FingerprintStrategy, metrics: Optional[object] = None
 ) -> str:
     if strategy == FingerprintStrategy.ALERTMANAGER:
         if not alert.fingerprint:

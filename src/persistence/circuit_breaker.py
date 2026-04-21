@@ -70,9 +70,7 @@ class CircuitBreaker:
                 logger.warning("Circuit breaker failed in half-open, opening")
                 self._state = CircuitState.OPEN
             elif self._failure_count >= self.failure_threshold:
-                logger.warning(
-                    f"Circuit breaker opening after {self._failure_count} failures"
-                )
+                logger.warning(f"Circuit breaker opening after {self._failure_count} failures")
                 self._state = CircuitState.OPEN
 
     def reset(self):

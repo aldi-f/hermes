@@ -47,7 +47,12 @@ curl -X POST http://localhost:8080/webhook \
 
 ## Configuration
 
-For detailed configuration options, see the [Alert Routing Guide](docs/tutorials/basic-alert-routing.md) and [Examples](docs/examples/).
+For detailed configuration options, see:
+- [Alert Routing Guide](docs/tutorials/basic-alert-routing.md) - Setting up destinations and match rules
+- [Routing and Groups](docs/concepts/routing-and-groups.md) - How OR routing works
+- [Deduplication](docs/concepts/deduplication.md) - Fingerprinting and deduplication windows
+- [Templating](docs/concepts/templating.md) - Customizing message formats
+- [Examples](docs/examples/) - Complete configuration examples
 
 ### Quick Config Example
 
@@ -74,15 +79,6 @@ groups:
 ```
 
 **For a complete working example**, see [docs/examples/simple-config.yaml](docs/examples/simple-config.yaml).
-
-## Configuration
-
-For detailed configuration options, see:
-- [Alert Routing Guide](docs/tutorials/basic-alert-routing.md) - Setting up destinations and match rules
-- [Routing and Groups](docs/concepts/routing-and-groups.md) - How OR routing works
-- [Deduplication](docs/concepts/deduplication.md) - Fingerprinting and deduplication windows
-- [Templating](docs/concepts/templating.md) - Customizing message formats
-- [Examples](docs/examples/) - Complete configuration examples
 
 ### Quick Reference
 
